@@ -1,0 +1,78 @@
+import { Brand, Category } from '@/types/inventory';
+import { ReportTimeframe } from '@/types/reports';
+import { File, Download, Sheet } from 'lucide-react';
+
+interface SalesControlPanelProps {
+    timeframe: ReportTimeframe;
+    onTimeframeChange: (timeframe: ReportTimeframe) => void;
+    brandId: string;
+    onBrandChange: (id: string) => void;
+    categoryId: string;
+    onCategoryChange: (id: string) => void;
+    brands: Brand[];
+    categories: Category[];
+    isFetching: boolean;
+}
+
+export default function SalesControlPanel({ timeframe, onTimeframeChange, brandId, onBrandChange, categoryId, onCategoryChange, brands, categories, isFetching }: SalesControlPanelProps) {
+    return (
+        <div className="flex flex-col items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:flex-row transition-colors">
+
+            {/* Left side Filters */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                
+                {/* Timeframe Dropdown */}
+                <select 
+                    value={timeframe}
+                    onChange={(e) => onTimeframeChange(e.target.value as ReportTimeframe)}
+                    disabled={isFetching}
+                    className="w-full sm:w-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50 transition-colors"
+                >
+                    <option value="daily">Today</option>
+                    <option value="weekly">Last 7 Days</option>
+                    <option value="monthly">Last 30 Days</option>
+                    <option value="yearly">Last 12 Months</option>
+                </select>
+
+                {/* Brand Dropdown */}
+                <select 
+                    value={brandId}
+                    onChange={(e) => onBrandChange(e.target.value)}
+                    disabled={isFetching}
+                    className="w-full sm:w-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50 transition-colors"
+                >
+                    <option value="">All Brands</option>
+                    {brands.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                </select>
+
+                {/* Category Dropdown */}
+                <select 
+                    value={categoryId}
+                    onChange={(e) => onCategoryChange(e.target.value)}
+                    disabled={isFetching}
+                    className="w-full sm:w-auto rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50 transition-colors"
+                >
+                    <option value="">All Categories</option>
+                    {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Right side Action Buttons */}
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                <button className="flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                    <Download className="h-4 w-4 text-red-500 md:mr-2" /> <span className="hidden md:inline">PDF</span>
+                </button>
+                <button className="flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                    <Sheet className="h-4 w-4 text-green-500 md:mr-2" /> <span className="hidden md:inline">CSV</span>
+                </button>
+                <button className="flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700">
+                    <File className="mr-2 h-4 w-4" /> <span className="whitespace-nowrap">Detailed Report</span>
+                </button>
+            </div>
+        </div>
+    )
+}
