@@ -111,7 +111,7 @@ export default function ExpandedBillModal({ bill, customer, onClose, onNext, onP
                         ) : (
                             <div>
                                 <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1 text-xs uppercase tracking-wider">Terms & Conditions</p>
-                                <p className="leading-relaxed">Goods once sold will not be taken back or exchanged. Warranty claims are subject to respective manufacturer's approval only. All disputes are subject to local jurisdiction.</p>
+                                <p className="leading-relaxed">Goods once sold will not be taken back or exchanged. Warranty claims are subject to respective manufacturer&apos;s approval only. All disputes are subject to local jurisdiction.</p>
                             </div>
                         )}
 

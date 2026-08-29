@@ -15,21 +15,27 @@ export default function UserProfile() {
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const [showConfirm, setShowConfirm] = useState(false);
-    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMounted(true);
+        let isActive = true;
+
         const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                setProfile({
-                    name: user.user_metadata?.full_name || 'User',
-                    email: user.email || '',
-                })
-            }
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+
+            if (!isActive || !user) return;
+
+            setProfile({
+                name: user.user_metadata?.full_name || 'User',
+                email: user.email || '',
+            });
         };
+
         fetchUser();
+
+        return () => {
+            isActive = false;
+        };
     }, []);
 
     const handleLogOut = async () => {
@@ -46,7 +52,7 @@ export default function UserProfile() {
                 // Use window.location instead of router.push to force a hard reload of all states
                 window.location.href = "/login";
             }
-        } catch (error) {
+        } catch {
             toast.error("Failed to logout");
             setIsLoggingOut(false);
             setShowConfirm(false);
@@ -100,7 +106,7 @@ export default function UserProfile() {
             </div>
 
             {/* 2. The Confirmation Modal Overlay */}
-            {showConfirm && mounted && createPortal(
+            {showConfirm && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
                     <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
                         <div className="flex flex-col items-center text-center gap-4">

@@ -41,9 +41,6 @@ export function useCreateBill(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -63,8 +60,6 @@ export function useUpdateBill(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -81,8 +76,6 @@ export function useDeleteBill(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -116,9 +109,6 @@ export function useCreateSalesReturn(tenantId: string) {
 
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -138,8 +128,6 @@ export function useUpdateSalesReturn(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -158,8 +146,6 @@ export function useDeleteSalesReturn(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }

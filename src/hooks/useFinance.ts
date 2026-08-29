@@ -14,9 +14,9 @@ export function usePnLDashboard(tenantId: string, startDate: string, endDate: st
         queryKey: ['pnl-dashboard', tenantId, startDate, endDate],
         queryFn: () => fetchPnLDashboardData(tenantId, startDate, endDate),
         enabled: !!tenantId && !!startDate && !!endDate,
-        staleTime: 1000 * 60 * 5, // Cache fresh for 5 minutes
-        gcTime: 1000 * 60 * 15,   // Retain in memory for 15 minutes
-        refetchOnWindowFocus: true,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 15,
+        refetchOnWindowFocus: false,
     });
 }
 
@@ -25,9 +25,9 @@ export function useGstDashboard(tenantId: string, startDate: string, endDate: st
         queryKey: ['gst_dashboard', tenantId, startDate, endDate],
         queryFn: () => fetchGstDashboard(tenantId, startDate, endDate),
         enabled: !!tenantId && !!startDate && !!endDate,
-        staleTime: 1000 * 60 * 5, // Cache fresh for 5 minutes
-        gcTime: 1000 * 60 * 15,   // Retain in memory for 15 minutes
-        refetchOnWindowFocus: true,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 15,
+        refetchOnWindowFocus: false,
     });
 }
 
@@ -88,11 +88,7 @@ export function useCreateExpense() {
             // Instantly refresh the table data for this tenant
             queryClient.invalidateQueries({ queryKey: ['expenses_with_categories', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['expenses', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_reference_data', variables.tenantId] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard', variables.tenantId] });
         },
     });
 }
@@ -104,14 +100,10 @@ export function useUpdateExpense() {
         mutationFn: ({ tenantId, expenseId, data }: { tenantId: string; expenseId: string; data: ExpenseFormData }) =>
             updateExpense(tenantId, expenseId, data),
         onSuccess: (_, variables) => {
-            // Instantly refresh the table data and P&L summaries
+            // Instantly refresh the table data
             queryClient.invalidateQueries({ queryKey: ['expenses_with_categories', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['expenses', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_reference_data', variables.tenantId] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard', variables.tenantId] });
         },
     });
 }
@@ -125,11 +117,7 @@ export function useDeleteExpense() {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['expenses_with_categories', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['expenses', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_reference_data', variables.tenantId] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard', variables.tenantId] });
         },
     });
 }
@@ -181,8 +169,6 @@ export function useCreateCashEntry() {
             createCashEntry(tenantId, data),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
         }
     });
 }
@@ -194,8 +180,6 @@ export function useUpdateCashEntry() {
             updateCashEntry(tenantId, entryId, data),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
         }
     });
 }
@@ -207,8 +191,6 @@ export function useDeleteCashEntry() {
             deleteCashEntry(entryId, tenantId),
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
         }
     });
 }
@@ -257,12 +239,9 @@ export function useRecordPaymentBatch() {
         mutationFn: ({ tenantId, data }: { tenantId: string, data: PaymentFormData }) => 
             recordPaymentBatch(tenantId, data),
         onSuccess: (_, variables) => {
-            // Massive invalidation sweep because this transaction touches almost every financial table
+            // Keep transactional and customer/supplier balances in sync without invalidating report-level summaries
             queryClient.invalidateQueries({ queryKey: ['payment_batches', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
             
             if (variables.data.entity_type === 'customer') {
                 queryClient.invalidateQueries({ queryKey: ['bills', 'all', variables.tenantId] });
@@ -294,9 +273,6 @@ export function useUpdatePaymentBatch() {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['payment_batches', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] }); // New
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
             
             if (variables.data.entity_type === 'customer') {
                 queryClient.invalidateQueries({ queryKey: ['bills', 'all', variables.tenantId] });
@@ -328,9 +304,6 @@ export function useDeletePaymentBatch() {
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['payment_batches', variables.tenantId] });
             queryClient.invalidateQueries({ queryKey: ['cash_book', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['daily_cash_summaries', variables.tenantId] }); // New
-            queryClient.invalidateQueries({ queryKey: ['daily_summaries', variables.tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard', variables.tenantId] });
             
             if (variables.entityType === 'customer') {
                 queryClient.invalidateQueries({ queryKey: ['bills', 'all', variables.tenantId] });

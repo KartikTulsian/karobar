@@ -8,6 +8,17 @@ export async function middleware(request: NextRequest) {
         },
     });
 
+    const pathname = request.nextUrl.pathname;
+    const isStaticAssetRoute =
+        pathname.startsWith('/_next') ||
+        pathname.startsWith('/favicon') ||
+        pathname.includes('/_rsc') ||
+        /\.(?:svg|png|jpe?g|gif|webp|ico|js|css|map|woff2?|ttf|eot)$/i.test(pathname);
+
+    if (isStaticAssetRoute || pathname.startsWith('/api')) {
+        return supabaseResponse;
+    }
+
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,7 +47,7 @@ export async function middleware(request: NextRequest) {
 
     // 1. Get the current user session
     const { data: { user }} = await supabase.auth.getUser();
-    const pathname = request.nextUrl.pathname;
+    // const pathname = request.nextUrl.pathname;
 
     const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup') || pathname.startsWith('/reset') || pathname.startsWith('/callback');
     const isPublicRoute = pathname === '/';
@@ -89,6 +100,6 @@ export async function middleware(request: NextRequest) {
 // Ensure the middleware only runs on specific paths to save edge compute
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|_next/data|_rsc|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|css|map|woff2?|ttf|eot)$).*)',
   ],
 }

@@ -9,7 +9,9 @@ export function useTenant(tenantId: string) {
     return useQuery({
         queryKey: ['tenant', tenantId],
         queryFn: () => fetchTenantDetails(tenantId),
-        enabled: !!tenantId, // Prevents the query from running if tenantId is missing
+        enabled: !!tenantId,
+        staleTime: 1000 * 60 * 30,
+        refetchOnWindowFocus: false,
     });
 }
 
@@ -30,6 +32,8 @@ export function useUserBusinesses() {
     return useQuery({
         queryKey: ['user_businesses'],
         queryFn: fetchUserBusinesses,
+        staleTime: 1000 * 60 * 30,
+        refetchOnWindowFocus: false,
     });
 }
 

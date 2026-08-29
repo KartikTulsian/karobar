@@ -2,7 +2,8 @@
 
 import { useUserBusinesses } from '@/hooks/usePeople';
 import { useTenantStore } from '@/store/useTenantStore';
-import { Building2, Check, ChevronsUpDown, Link, PlusCircle, ShieldCheck, Store } from 'lucide-react';
+import { Building2, Check, ChevronsUpDown, PlusCircle, ShieldCheck, Store } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react'
 
 export function ShopSwitcher() {
@@ -13,15 +14,24 @@ export function ShopSwitcher() {
   const { data: businesses } = useUserBusinesses();
 
   useEffect(() => {
-    if (businesses) {
-      setAvailableTenants(businesses);
-      
-      // Auto-select the first business if none is currently active
-      if (!activeTenant && businesses.length > 0) {
-        setActiveTenant(businesses[0]);
-      }
+    if (!businesses) return;
+
+    setAvailableTenants(businesses);
+
+    if (businesses.length === 0) {
+      return;
     }
-  }, [businesses, activeTenant, setAvailableTenants, setActiveTenant]);
+
+    if (!activeTenant) {
+      setActiveTenant(businesses[0]);
+      return;
+    }
+
+    if (!businesses.some((tenant) => tenant.tenantId === activeTenant.tenantId)) {
+      setActiveTenant(businesses[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businesses, setAvailableTenants, setActiveTenant]);
 
   const otherTenants = availableTenants?.filter(t => t.tenantId !== activeTenant?.tenantId) || [];
 

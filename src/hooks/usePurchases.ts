@@ -87,9 +87,6 @@ export function useCreatePurchaseOrder(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     })
 }
@@ -106,8 +103,6 @@ export function useUpdatePurchaseOrder(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -123,8 +118,6 @@ export function useDeletePurchaseOrder(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -149,9 +142,6 @@ export function useCreatePurchaseReturn(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -169,8 +159,6 @@ export function useUpdatePurchaseReturn(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
@@ -186,8 +174,6 @@ export function useDeletePurchaseReturn(tenantId: string) {
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
             queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
-            queryClient.invalidateQueries({ queryKey: ['pnl-dashboard'] });
-            queryClient.invalidateQueries({ queryKey: ['gst_dashboard'] });
         },
     });
 }
