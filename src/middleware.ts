@@ -52,10 +52,13 @@ export async function middleware(request: NextRequest) {
     // 1. Get the current user session
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (authError) {
+    // if (authError) {
+    //      console.error(`[Middleware Debug] Auth Error: ${authError.message}`);
+    // } else {
+    //      console.log(`[Middleware Debug] User Session Exists: ${!!user}`);
+    // }
+    if (authError && authError.message !== "Auth session missing!") {
          console.error(`[Middleware Debug] Auth Error: ${authError.message}`);
-    } else {
-         console.log(`[Middleware Debug] User Session Exists: ${!!user}`);
     }
     // const pathname = request.nextUrl.pathname;
 
