@@ -57,6 +57,7 @@ export default function TenantCreateForm() {
 
             if (res?.success && res.tenant) {
                 setActiveTenant(res.tenant);
+                router.refresh();
                 router.push("/dashboard");
             }
         } catch (err: unknown) {

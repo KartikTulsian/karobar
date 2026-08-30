@@ -1,17 +1,35 @@
-"use client";
-
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 import React from 'react'
 
-export default function DashBoardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashBoardLayout({ children }: { children: React.ReactNode }) {
 
-    const roleBadgeStyles: Record<string, string> = {
-        system_admin: "bg-red-500 text-white",
-        owner: "bg-indigo-600 text-white",
-        manager: "bg-amber-500 text-slate-900",
-        staff: "bg-emerald-600 text-white",
-        customer: "bg-slate-600 text-white"
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect('/login');
+    }
+
+    // Perform profile completeness & membership checks on the server layout
+    const [profileRes, membershipRes] = await Promise.all([
+        supabase.from('users').select('full_name, phone').eq('id', user.id).single(),
+        supabase.from('tenant_memberships').select('id').eq('user_id', user.id).eq('is_active', true)
+    ]);
+
+    const profile = profileRes.data;
+    const hasMemberships = membershipRes.data && membershipRes.data.length > 0;
+
+    // A. Enforce profile details (name and phone)
+    if (!profile?.full_name || !profile?.phone) {
+        redirect('/onboarding/profile');
+    }
+
+    // B. Enforce tenant creation / membership
+    if (!hasMemberships) {
+        redirect('/onboarding');
     }
 
     return (

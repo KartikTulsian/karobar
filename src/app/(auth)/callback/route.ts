@@ -8,7 +8,11 @@ export async function GET(request: Request) {
     const code = searchParams.get('code');
     const token_hash = searchParams.get('token_hash');
     const type = searchParams.get('type') as EmailOtpType | null;
-    const next = searchParams.get('next') ?? '/dashboard';
+    let next = searchParams.get('next') ?? '/dashboard';
+    if (!next.startsWith('/') || next.startsWith('//')) {
+        next = '/dashboard';
+    }
+    
     
     // Check for errors sent directly from Supabase
     const error = searchParams.get('error');

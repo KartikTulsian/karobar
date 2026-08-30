@@ -57,5 +57,6 @@ export async function updateHumanProfileAction(formData: FormData) {
     }
 
     revalidatePath("/", "layout");
-    redirect("/onboarding");
+    // redirect("/onboarding");
+    return { success: true };
 }

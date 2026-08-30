@@ -32,8 +32,6 @@ export default function TenantUpdateForm({ tenantId, defaultValues, onCancel, on
         },
     });
 
-    const currentLogoUrl = watch("logo_url") || defaultValues.logo_url;
-
     const [logoFiles, setLogoFiles] = useState<(File | string)[]>(
         defaultValues?.logo_url ? [defaultValues.logo_url] : []
     );

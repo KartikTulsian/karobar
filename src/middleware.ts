@@ -14,10 +14,11 @@ export async function middleware(request: NextRequest) {
     const isStaticAssetRoute =
         pathname.startsWith('/_next') ||
         pathname.startsWith('/favicon') ||
-        pathname.includes('/_rsc') ||
+        pathname.startsWith('/api') ||
+        request.nextUrl.searchParams.has('_rsc') ||
         /\.(?:svg|png|jpe?g|gif|webp|ico|js|css|map|woff2?|ttf|eot)$/i.test(pathname);
 
-    if (isStaticAssetRoute || pathname.startsWith('/api')) {
+    if (isStaticAssetRoute) {
         return supabaseResponse;
     }
 
@@ -26,25 +27,29 @@ export async function middleware(request: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
             cookies: {
-                get(name: string) {
-                    return request.cookies.get(name)?.value;
+                getAll() {
+                    return request.cookies.getAll();
                 },
-                set(name: string, value: string, options: CookieOptions) {
-                    console.log(`[Middleware Debug] Setting Auth Cookie: ${name}`);
-                    request.cookies.set({ name, value, ...options });
-                    // supabaseResponse = NextResponse.next({
-                    //     request: { headers: request.headers },
-                    // });
-                    supabaseResponse.cookies.set({ name, value, ...options });
+                setAll(cookiesToSet) {
+                    // console.log(`[Middleware Debug] Setting Auth Cookie: ${name}`);
+                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+                    supabaseResponse = NextResponse.next({
+                        request: {
+                            headers: request.headers,
+                        },
+                    });
+                    cookiesToSet.forEach(({ name, value, options }) =>
+                        supabaseResponse.cookies.set(name, value, options)
+                    );
                 },
-                remove(name: string, options: CookieOptions) {
-                    console.log(`[Middleware Debug] Removing Auth Cookie: ${name}`);
-                    request.cookies.set({ name, value: '', ...options });
-                    // supabaseResponse = NextResponse.next({
-                    //     request: { headers: request.headers },
-                    // });
-                    supabaseResponse.cookies.set({ name, value: '', ...options });
-                },
+                // remove(name: string, options: CookieOptions) {
+                //     console.log(`[Middleware Debug] Removing Auth Cookie: ${name}`);
+                //     request.cookies.set({ name, value: '', ...options });
+                //     // supabaseResponse = NextResponse.next({
+                //     //     request: { headers: request.headers },
+                //     // });
+                //     supabaseResponse.cookies.set({ name, value: '', ...options });
+                // },
             },
         }
     );
@@ -58,7 +63,7 @@ export async function middleware(request: NextRequest) {
     //      console.log(`[Middleware Debug] User Session Exists: ${!!user}`);
     // }
     if (authError && authError.message !== "Auth session missing!") {
-         console.error(`[Middleware Debug] Auth Error: ${authError.message}`);
+        console.error(`[Middleware Debug] Auth Error: ${authError.message}`);
     }
     // const pathname = request.nextUrl.pathname;
 
@@ -78,46 +83,52 @@ export async function middleware(request: NextRequest) {
     }
 
     // 3. Handle logged-in user routing logic
-    if (user && !pathname.startsWith('/api')) {
-        if (pathname.startsWith('/update-password')) {
-             return supabaseResponse;
-        }
-        // Fetch user profile and memberships simultaneously for speed
-        const [profileRes, membershipRes] = await Promise.all([
-            supabase.from('users').select('full_name, phone').eq('id', user.id).single(),
-            supabase.from('tenant_memberships').select('id').eq('user_id', user.id).eq('is_active', true)
-        ]);
+    // if (user && !pathname.startsWith('/api')) {
+    //     if (pathname.startsWith('/update-password')) {
+    //          return supabaseResponse;
+    //     }
+    //     // Fetch user profile and memberships simultaneously for speed
+    //     const [profileRes, membershipRes] = await Promise.all([
+    //         supabase.from('users').select('full_name, phone').eq('id', user.id).single(),
+    //         supabase.from('tenant_memberships').select('id').eq('user_id', user.id).eq('is_active', true)
+    //     ]);
 
-        const profile = profileRes.data;
-        const hasMemberships = membershipRes.data && membershipRes.data.length > 0;
+    //     const profile = profileRes.data;
+    //     const hasMemberships = membershipRes.data && membershipRes.data.length > 0;
 
-        // A. Check Profile Completeness
-        const isProfileIncomplete = !profile?.full_name || !profile?.phone;
+    //     // A. Check Profile Completeness
+    //     const isProfileIncomplete = !profile?.full_name || !profile?.phone;
 
-        console.log(`[Middleware Debug] Profile Incomplete: ${isProfileIncomplete} | Has Memberships: ${hasMemberships}`);
+    //     console.log(`[Middleware Debug] Profile Incomplete: ${isProfileIncomplete} | Has Memberships: ${hasMemberships}`);
 
-        if (isProfileIncomplete && pathname !== '/onboarding/profile') {
-            console.log(`[Middleware Debug] Redirecting to /onboarding/profile`);
-            const url = request.nextUrl.clone();
-            url.pathname = '/onboarding/profile';
-            return NextResponse.redirect(url);
-        }
+    //     if (isProfileIncomplete && pathname !== '/onboarding/profile') {
+    //         console.log(`[Middleware Debug] Redirecting to /onboarding/profile`);
+    //         const url = request.nextUrl.clone();
+    //         url.pathname = '/onboarding/profile';
+    //         return NextResponse.redirect(url);
+    //     }
 
-        // B. Check Tenant Memberships (The Onboarding Gate)
-        if (!isProfileIncomplete && !hasMemberships && !pathname.startsWith('/onboarding')) {
-            console.log(`[Middleware Debug] Redirecting to /onboarding`);
-            const url = request.nextUrl.clone();
-            url.pathname = '/onboarding';
-            return NextResponse.redirect(url);
-        }
+    //     // B. Check Tenant Memberships (The Onboarding Gate)
+    //     if (!isProfileIncomplete && !hasMemberships && !pathname.startsWith('/onboarding')) {
+    //         console.log(`[Middleware Debug] Redirecting to /onboarding`);
+    //         const url = request.nextUrl.clone();
+    //         url.pathname = '/onboarding';
+    //         return NextResponse.redirect(url);
+    //     }
 
-        // C. Prevent reverse-routing (Logged-in users with shops shouldn't see login or onboarding)
-        if (!isProfileIncomplete && hasMemberships && (pathname.startsWith('/onboarding') || isAuthRoute || pathname === '/')) {
-            console.log(`[Middleware Debug] Fully onboarded user on auth route. Redirecting to /dashboard`);
-            const url = request.nextUrl.clone();
-            url.pathname = '/dashboard';
-            return NextResponse.redirect(url);
-        }
+    //     // C. Prevent reverse-routing (Logged-in users with shops shouldn't see login or onboarding)
+    //     if (!isProfileIncomplete && hasMemberships && (pathname.startsWith('/onboarding') || isAuthRoute || pathname === '/')) {
+    //         console.log(`[Middleware Debug] Fully onboarded user on auth route. Redirecting to /dashboard`);
+    //         const url = request.nextUrl.clone();
+    //         url.pathname = '/dashboard';
+    //         return NextResponse.redirect(url);
+    //     }
+    // }
+
+    if (user && isAuthRoute && !pathname.startsWith('/update-password') && !pathname.startsWith('/callback')) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/dashboard';
+        return NextResponse.redirect(url);
     }
 
     return supabaseResponse;

@@ -17,6 +17,7 @@ export function PendingInvitesCard({ invite }: { invite: TenantInvitation }) {
         const res = await acceptStaffInviteAction(invite.token);
         if (res.success) {
             clearStore();
+            router.refresh();
             router.push("/dashboard");
         } else {
             alert(res.error);

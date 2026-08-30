@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 export async function signInWithPasswordAction(formData: FormData) {
-    const email = (formData.get("email") as string).trim();
+    const email = (formData.get("email") as string).trim().toLowerCase();
     const password = formData.get("password") as string;
     const supabase = await createClient();
 
@@ -35,7 +35,7 @@ export async function signInWithPasswordAction(formData: FormData) {
 }
 
 export async function signUpAction(formData: FormData){
-    const email = formData.get("email") as string;
+    const email = (formData.get("email") as string).trim().toLowerCase();
     const password = formData.get("password") as string;
     const fullName = formData.get("fullName") as string;
     const supabase = await createClient();
@@ -72,7 +72,8 @@ export async function signOutAction() {
 export async function signInWithOAuthAction(provider: 'google' | 'github') {
     const supabase = await createClient();
     // const origin = (await headers()).get("origin") || "http://localhost:3000";
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteUrl) throw new Error("Missing NEXT_PUBLIC_SITE_URL environment variable.");
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: provider,
@@ -98,8 +99,8 @@ export async function requestPasswordResetAction(formData: FormData) {
     const supabase = await createClient();
     
     // In production, use your actual domain (e.g., process.env.NEXT_PUBLIC_SITE_URL)
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteUrl) throw new Error("Missing NEXT_PUBLIC_SITE_URL environment variable.");
     console.log(`[Auth Action Debug] Requesting password reset for: ${email}`);
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {

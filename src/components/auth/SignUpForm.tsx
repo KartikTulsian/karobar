@@ -33,7 +33,7 @@ export default function SignUpForm() {
 
         const formData = new FormData();
         formData.append("fullName", data.fullName);
-        formData.append("email", data.email);
+        formData.append("email", data.email.trim().toLowerCase());
         formData.append("password", data.password);
 
         // Execute the backend call securely
@@ -44,7 +44,8 @@ export default function SignUpForm() {
             toast.error(res.error); // E.g., "User already registered"
         } else if (res?.success) {
             toast.success("Account created! Let's set up your profile.");
-            router.push("/dashboard");
+            router.refresh();
+            router.push("/onboarding/profile");
         }
     };
     return (
@@ -129,12 +130,12 @@ export default function SignUpForm() {
                     </button>
                 </form>
 
-                <div className="text-sm text-slate-500 dark:text-slate-400">
+                {/* <div className="text-sm text-slate-500 dark:text-slate-400">
                     Already have an account?{" "}
                     <Link href="/login" className="font-semibold text-slate-900 hover:underline dark:text-white">
                         Sign in
                     </Link>
-                </div>
+                </div> */}
             </div>
         </div>
     )

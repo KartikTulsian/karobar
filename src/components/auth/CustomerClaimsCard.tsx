@@ -17,6 +17,7 @@ export function CustomerClaimsCard({ claim }: { claim: CustomerClaimMatch }) {
         const res = await claimCustomerProfileAction(claim.id, claim.tenant_id);
         if (res.success) {
             clearStore();
+            router.refresh();
             router.push("/dashboard");
         } else {
             alert(res.error);

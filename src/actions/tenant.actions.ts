@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { ActiveTenantContext } from "@/types/people";
+import { revalidatePath } from "next/cache";
 
 export async function createBusinessAccountAction(formData: FormData) {
     console.log("[Server Action] Starting createBusinessAccountAction...");
@@ -59,6 +60,8 @@ export async function createBusinessAccountAction(formData: FormData) {
         // if (logoUrl) {
         //     await supabase.from('tenants').update({ logo_url: logoUrl }).eq('id', tenantId);
         // }
+
+        revalidatePath("/", "layout");
 
         const safeTenantId = String(tenantId);
 

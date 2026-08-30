@@ -18,9 +18,19 @@ export default async function OnboardingHub() {
 
     console.log("[DEBUG - OnboardingHub] Scanning for authenticated user email:", user.email);
 
-    const { data: profile } = await supabase.from('users').select('phone').eq('id', user.id).single();
-    if (!profile?.phone) redirect("/onboarding/profile");
+    const { data: profile } = await supabase.from('users').select('full_name, phone').eq('id', user.id).single();
+    if (!profile?.full_name || !profile?.phone) redirect("/onboarding/profile");
 
+    const { data: memberships } = await supabase
+        .from('tenant_memberships')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+    if (memberships && memberships.length > 0) {
+        redirect("/dashboard");
+    }
+    
     // 2. Scan for Data using Service Role (Bypassing RLS safely on the server)
     const [invitesRes, claimsRes] = await Promise.all([
         adminDb

@@ -38,7 +38,7 @@ export default function LoginForm() {
 
         //Convert Zod data to FormData for the Server Action
         const formData = new FormData();
-        formData.append("email", data.email);
+        formData.append("email", data.email.trim().toLowerCase());
         formData.append("password", data.password);
 
         // Call the backend securely
@@ -52,8 +52,7 @@ export default function LoginForm() {
         } else if (res?.success) {
             toast.success("Successfully logged in!");
 
-            // Push to dashboard. The Edge Middleware will intercept this 
-            // and seamlessly route them to /onboarding if they lack a shop!
+            router.refresh();
             router.push("/dashboard");
         }
     };
@@ -154,14 +153,14 @@ export default function LoginForm() {
                         </button>
                     </form>
 
-                    <div className="flex flex-col gap-6">
+                    {/* <div className="flex flex-col gap-6">
                         <div className="text-sm text-slate-500 dark:text-slate-400">
                             Don&apos;t have an account?{" "}
                             <Link href="/signup" className="font-semibold text-slate-900 hover:underline dark:text-white">
                                 Sign up
                             </Link>
                         </div>
-                    </div>
+                    </div> */}
                 </div>
             </div>
         </div>

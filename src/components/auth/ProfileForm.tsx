@@ -8,6 +8,7 @@ import InputField from '../common/InputField';
 import Image from 'next/image';
 import { updateHumanProfileAction } from '@/actions/profile.actions';
 import DeferredImageUploader from '../common/DeferredImageUploader';
+import { useRouter } from 'next/navigation';
 
 interface ProfileFormProps {
     initialEmail: string;
@@ -17,6 +18,7 @@ interface ProfileFormProps {
 
 export default function ProfileForm({ initialEmail, initialName, initialAvatarUrl }: ProfileFormProps) {
     const [serverError, setServerError] = useState<string | null>(null);
+    const router = useRouter();
 
     const {
         register,
@@ -48,7 +50,7 @@ export default function ProfileForm({ initialEmail, initialName, initialAvatarUr
                 if (typeof img === "string") {
                     finalAvatarUrl = img; // Keep existing string URL
                 } else if (img instanceof File) {
-                    
+
                     // Upload new image. Note: We DO NOT pass entityId. 
                     // Your secure API route automatically attaches the exact Supabase user.id!
                     const presignRes = await fetch("/api/upload/presign", {
@@ -91,6 +93,9 @@ export default function ProfileForm({ initialEmail, initialName, initialAvatarUr
 
             if (res?.error) {
                 setServerError(res.error);
+            } else if (res?.success) {
+                router.refresh();
+                router.push("/onboarding");
             }
         } catch (error) {
             console.error("Upload error:", error);
