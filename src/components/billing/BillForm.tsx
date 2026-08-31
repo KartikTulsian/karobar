@@ -719,6 +719,14 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                     {errors.bill_line_items && <span className="text-xs font-medium text-red-500">{errors.bill_line_items.message}</span>}
                 </div>
 
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300">
+                    <span className="font-semibold block mb-1">💡 Discount Calculation Helpers:</span>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                        <li><strong>Successive Discounts (e.g., 16% + 5.5%):</strong> Combine into one: <code>(1 - ((1 - 0.16) × (1 - 0.055))) × 100</code> = 20.62%</li>
+                        <li><strong>Hidden Discount (Final amount given instead of %):</strong> Find the difference: <code>(1 - (Final Amount / (Qty × Rate))) × 100</code></li>
+                    </ul>
+                </div>
+
                 <datalist id="inventory-items-list">
                     {items.map((item) => (
                         <option key={item.id} value={item.name} />
@@ -963,7 +971,14 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                                         : 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700'
                                                                         }`}
                                                                 >
-                                                                    <div className="font-medium text-slate-800 dark:text-slate-200">{item.name}</div>
+                                                                    <div className="font-medium text-slate-800 dark:text-slate-200">
+                                                                        {item.name}
+                                                                        {item.sku && (
+                                                                            <span className="ml-1.5 text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                                                                                SKU: {item.sku}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     <div className="flex items-center justify-between mt-0.5">
                                                                         <span className="text-xs font-semibold text-emerald-600">₹{item.default_sell_price}</span>
                                                                         <span className={`text-[10px] font-bold px-1.5 rounded ${isAlreadySelected ? 'text-amber-600 bg-amber-100 dark:bg-amber-500/20'
