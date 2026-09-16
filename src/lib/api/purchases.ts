@@ -4,7 +4,7 @@ import { ToPurchaseFormData } from "../validations/toPurchaseSchema";
 import { POLineItemFormData, PurchaseOrderFormData } from "../validations/purchaseOrderSchema";
 import { PurchaseReturnFormData } from "../validations/purchaseReturnSchema";
 import { PurchaseCalculationEngine } from "../services/PurchaseCalculationEngine";
-import { getLocalDateString, getUtcStartOfDateIso } from "../utils";
+import { calculateInventoryUnitCost, getLocalDateString, getUtcStartOfDateIso } from "../utils";
 
 // 1. Fetch the To Purchase List (with Supplier names)
 export async function fetchToPurchaseList(tenantId: string): Promise<ToPurchaseItem[]> {
@@ -127,25 +127,47 @@ async function syncPOBatches(
     poNumber: string,
     orderDate: string | undefined,
     oldItems: Pick<POLineItemFormData, "item_id" | "qty_received">[],
-    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price">[]
+    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price" | "discount_pct" | "gst_rate">[]
 ) {
     // Fetch all batches currently tied to this Purchase Order
     const { data: existingBatches } = await supabase.from('item_batches').select('*').eq('po_id', poId);
+    let isGstRegistered = false;
+    if (newItems.length > 0) {
+        const { data: tenant, error: tenantError } = await supabase
+            .from('tenants')
+            .select('gstin')
+            .eq('id', tenantId)
+            .single();
+        if (tenantError) throw new Error(`Failed to determine tenant GST registration status: ${tenantError.message}`);
+        isGstRegistered = Boolean(tenant?.gstin?.trim());
+    }
     const createdAtIso = getUtcStartOfDateIso(orderDate);
 
     const oldQtyMap: Record<string, number> = {};
     oldItems.forEach(i => { if (i.item_id) oldQtyMap[i.item_id] = (oldQtyMap[i.item_id] || 0) + Number(i.qty_received); });
 
     const newQtyMap: Record<string, number> = {};
-    const newCostMap: Record<string, number> = {};
+    const newCostTotalsMap: Record<string, number> = {};
     const newSellMap: Record<string, number> = {};
 
     newItems.forEach(i => {
-        if (i.item_id) {
-            newQtyMap[i.item_id] = (newQtyMap[i.item_id] || 0) + Number(i.qty_received);
-            newCostMap[i.item_id] = Number(i.unit_cost) || 0;
+        const receivedQty = Number(i.qty_received) || 0;
+        if (i.item_id && receivedQty > 0) {
+            const inventoryUnitCost = calculateInventoryUnitCost(
+                Number(i.unit_cost) || 0,
+                Number(i.discount_pct) || 0,
+                Number(i.gst_rate) || 0,
+                isGstRegistered
+            );
+            newQtyMap[i.item_id] = (newQtyMap[i.item_id] || 0) + receivedQty;
+            newCostTotalsMap[i.item_id] = (newCostTotalsMap[i.item_id] || 0) + inventoryUnitCost * receivedQty;
             newSellMap[i.item_id] = Number(i.batch_sell_price) || Number(i.unit_cost) || 0;
         }
+    });
+
+    const newCostMap: Record<string, number> = {};
+    Object.keys(newQtyMap).forEach(itemId => {
+        newCostMap[itemId] = Number((newCostTotalsMap[itemId] / newQtyMap[itemId]).toFixed(2));
     });
 
     const allItemIds = Array.from(new Set([...Object.keys(oldQtyMap), ...Object.keys(newQtyMap)]));

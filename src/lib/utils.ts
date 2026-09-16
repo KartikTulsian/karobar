@@ -28,6 +28,24 @@ export function getUtcStartOfDateIso(dateString: string | undefined | null): str
     return utcDate.toISOString();
 }
 
+export function calculateInventoryUnitCost(
+    unitCost: number,
+    discountPct: number,
+    gstRate: number,
+    isGstRegistered: boolean
+): number {
+    const safeUnitCost = Number(unitCost) || 0;
+    const safeDiscountPct = Number(discountPct) || 0;
+    const safeGstRate = Number(gstRate) || 0;
+    const discountedCost = safeUnitCost * (1 - safeDiscountPct / 100);
+
+    if (isGstRegistered) {
+        return Number(discountedCost.toFixed(2));
+    }
+
+    return Number((discountedCost * (1 + safeGstRate / 100)).toFixed(2));
+}
+
 export function isSameLocalDate(dbTimestamp: string, targetDate: string): boolean {
     if (!dbTimestamp || !targetDate) return false;
     return getLocalDateString(dbTimestamp) === targetDate;
