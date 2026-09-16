@@ -12,6 +12,22 @@ export function getLocalDateString(dateString: string | undefined | null): strin
     return new Date(date.getTime() - offset).toISOString().split('T')[0];
 }
 
+export function getUtcStartOfDateIso(dateString: string | undefined | null): string | null {
+    const cleanDate = dateString?.trim().split('T')[0];
+    if (!cleanDate) return null;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+        throw new Error(`Invalid date value: ${dateString}`);
+    }
+
+    const utcDate = new Date(`${cleanDate}T00:00:00.000Z`);
+    if (Number.isNaN(utcDate.getTime()) || utcDate.toISOString().slice(0, 10) !== cleanDate) {
+        throw new Error(`Invalid date value: ${dateString}`);
+    }
+
+    return utcDate.toISOString();
+}
+
 export function isSameLocalDate(dbTimestamp: string, targetDate: string): boolean {
     if (!dbTimestamp || !targetDate) return false;
     return getLocalDateString(dbTimestamp) === targetDate;

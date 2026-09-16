@@ -60,7 +60,8 @@ export default function ItemDetailsPage() {
   if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-600" /></div>;
   if (isError || !item) return <div className="p-8 text-red-500">Error loading item details.</div>;
 
-  const activeBatches = item.batches?.filter(batch => batch.stock_qty > 0) || [];
+  const activeBatches = (item.batches?.filter(batch => batch.stock_qty > 0) || [])
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const depletedBatchesCount = (item.batches?.length || 0) - activeBatches.length;
 
   // Map the raw data into the format our generic DetailsTable expects

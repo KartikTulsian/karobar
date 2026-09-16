@@ -4,7 +4,7 @@ import { ToPurchaseFormData } from "../validations/toPurchaseSchema";
 import { POLineItemFormData, PurchaseOrderFormData } from "../validations/purchaseOrderSchema";
 import { PurchaseReturnFormData } from "../validations/purchaseReturnSchema";
 import { PurchaseCalculationEngine } from "../services/PurchaseCalculationEngine";
-import { getLocalDateString } from "../utils";
+import { getLocalDateString, getUtcStartOfDateIso } from "../utils";
 
 // 1. Fetch the To Purchase List (with Supplier names)
 export async function fetchToPurchaseList(tenantId: string): Promise<ToPurchaseItem[]> {
@@ -125,11 +125,13 @@ async function syncPOBatches(
     tenantId: string,
     poId: string,
     poNumber: string,
+    orderDate: string | undefined,
     oldItems: Pick<POLineItemFormData, "item_id" | "qty_received">[],
     newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price">[]
 ) {
     // Fetch all batches currently tied to this Purchase Order
     const { data: existingBatches } = await supabase.from('item_batches').select('*').eq('po_id', poId);
+    const createdAtIso = getUtcStartOfDateIso(orderDate);
 
     const oldQtyMap: Record<string, number> = {};
     oldItems.forEach(i => { if (i.item_id) oldQtyMap[i.item_id] = (oldQtyMap[i.item_id] || 0) + Number(i.qty_received); });
@@ -167,7 +169,8 @@ async function syncPOBatches(
             await supabase.from('item_batches').update({
                 stock_qty: newStockQty,
                 buy_price: newCostMap[itemId] !== undefined ? newCostMap[itemId] : batch.buy_price,
-                sell_price: newSellMap[itemId] !== undefined ? newSellMap[itemId] : batch.sell_price
+                sell_price: newSellMap[itemId] !== undefined ? newSellMap[itemId] : batch.sell_price,
+                ...(createdAtIso ? { created_at: createdAtIso } : {})
             }).eq('id', batch.id);
 
         } else if (newQty > 0) {
@@ -179,7 +182,8 @@ async function syncPOBatches(
                 batch_number: poNumber,
                 buy_price: newCostMap[itemId],
                 sell_price: newSellMap[itemId],
-                stock_qty: newQty
+                stock_qty: newQty,
+                ...(createdAtIso ? { created_at: createdAtIso } : {})
             });
         }
     }
@@ -565,7 +569,7 @@ export async function createPurchaseOrder(tenantId: string, data: PurchaseOrderF
         //         await syncInventoryStock(tenantId, item.item_id, Math.abs(item.qty_received), "Create PO (Receive)");
         //     }
         // }
-        await syncPOBatches(tenantId, newPO.id, finalPoNumber, [], safeData.po_line_items);
+        await syncPOBatches(tenantId, newPO.id, finalPoNumber, safeData.order_date, [], safeData.po_line_items);
 
         await supabase.rpc('sync_supplier_metrics', { p_supplier_id: safeData.supplier_id });
     }
@@ -685,7 +689,7 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     const newItemsPayload = safeData.status === 'draft' ? [] : safeData.po_line_items;
     if (safeData.status !== 'draft') {
         // NEW: Passes old state and new state to intelligently update batches
-        await syncPOBatches(tenantId, poId, safeData.po_number || oldPO.po_number, oldItems || [], newItemsPayload);
+        await syncPOBatches(tenantId, poId, safeData.po_number || oldPO.po_number, safeData.order_date, oldItems || [], newItemsPayload);
     }
 
     // Step E: SUPPLIER METRICS
@@ -733,7 +737,7 @@ export async function deletePurchaseOrder(tenantId: string, poId: string, forceH
             .eq('po_id', poId);
 
         if (lineItems) {
-            await syncPOBatches(tenantId, poId, poToDelete.po_number, lineItems, []);
+            await syncPOBatches(tenantId, poId, poToDelete.po_number, undefined, lineItems, []);
         }
     }
 
