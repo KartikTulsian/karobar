@@ -661,7 +661,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
 
     const { data: oldBill } = await supabase
         .from('bills')
-        .select('grand_total, amount_due, amount_paid, settlement_discount, customer_id')
+        .select('grand_total, amount_due, amount_paid, settlement_discount, customer_id, bill_number')
         .eq('id', billId)
         .single();
 
@@ -690,7 +690,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
         .from('bills')
         .update({
             customer_id: finalCustomerId,
-            bill_number: data.bill_number,
+            bill_number: data.bill_number?.trim() || oldBill.bill_number,
             bill_date: data.bill_date,
             due_date: data.due_date || null,
             vehicle_no: data.vehicle_no || null,
@@ -748,7 +748,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     }
 
     // 3. Insert fresh line items
-    const lineItemsTOInsert = data.bill_line_items.map((item) => {
+    const lineItemsTOInsert = safeData.bill_line_items.map((item) => {
         const { id, ...itemData } = item;
         return { bill_id: billId, ...itemData };
     });
@@ -757,7 +757,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     if (insertError) throw new Error("Failed to save updated items.");
 
     // 4. INVENTORY SYNC: Deduct the newly updated item quantities from stock
-    for (const newItem of data.bill_line_items) {
+    for (const newItem of safeData.bill_line_items) {
         // await syncInventoryStock(tenantId, newItem.item_id, -Math.abs(newItem.qty), "Update Bill (Apply)");
         await syncBatchStock(newItem.batch_allocations, -1, "Update Bill (Apply)");
     }

@@ -523,10 +523,19 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                     .filter(Boolean);
 
                                 const filteredItems = inventory
-                                    .filter(i => i.name.toLowerCase().includes(searchLower))
+                                    .filter(i => 
+                                        i.name.toLowerCase().includes(searchLower) || 
+                                        (i.sku && i.sku.toLowerCase().includes(searchLower))
+                                    )
                                     .sort((a, b) => {
-                                        const aStarts = a.name.toLowerCase().startsWith(searchLower);
-                                        const bStarts = b.name.toLowerCase().startsWith(searchLower);
+                                        const aNameStarts = a.name.toLowerCase().startsWith(searchLower);
+                                        const bNameStarts = b.name.toLowerCase().startsWith(searchLower);
+                                        const aSkuStarts = !!(a.sku && a.sku.toLowerCase().startsWith(searchLower));
+                                        const bSkuStarts = !!(b.sku && b.sku.toLowerCase().startsWith(searchLower));
+
+                                        const aStarts = aNameStarts || aSkuStarts;
+                                        const bStarts = bNameStarts || bSkuStarts;
+
                                         if (aStarts && !bStarts) return -1;
                                         if (!aStarts && bStarts) return 1;
                                         return 0;

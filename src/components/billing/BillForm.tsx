@@ -3,7 +3,7 @@
 import { BillFormData, billSchema } from '@/lib/validations/billSchema';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FileMinus, FileText, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Path, Resolver, useFieldArray, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import { useCustomers } from '@/hooks/usePeople';
@@ -55,19 +55,9 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
     const [activeBatchAllocator, setActiveBatchAllocator] = useState<number | null>(null);
     const [showAdvanced, setShowAdvanced] = useState(false);
 
-    //1. Initialize React hook form
-    const {
-        register,
-        control,
-        handleSubmit,
-        watch,
-        setValue,
-        reset,
-        formState: { errors, isSubmitting },
-    } = useForm<BillFormData>({
-        resolver: zodResolver(billSchema) as Resolver<BillFormData>,
-        defaultValues: {
-            bill_date: getLocalDateString(new Date().toISOString()), // Today's date as default YYYY-MM-DD
+    const initialFormValues = useMemo(() => {
+        const baseValues = {
+            bill_date: getLocalDateString(new Date().toISOString()),
             customer_type: "" as unknown as "registered",
             status: "" as unknown as "issued",
             payment_method: "credit",
@@ -80,35 +70,65 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
             vehicle_no: "",
             reference_name: "",
             terms_conditions: "",
-            bill_line_items: [DEFAULT_LINE_ITEM],
-            ...defaultValues,
+            bill_line_items: [{ ...DEFAULT_LINE_ITEM }],
+        };
+
+        if (!defaultValues || Object.keys(defaultValues).length === 0) {
+            return baseValues as Partial<BillFormData>;
         }
+
+        return {
+            ...baseValues,
+            ...defaultValues,
+            vehicle_no: defaultValues.vehicle_no || "",
+            reference_name: defaultValues.reference_name || "",
+            terms_conditions: defaultValues.terms_conditions || "",
+            discount_amount: Number(defaultValues.discount_amount) || 0,
+            round_off: Number(defaultValues.round_off) || 0,
+            is_gst_bill: Boolean(defaultValues.is_gst_bill),
+            is_interstate: Boolean(defaultValues.is_interstate),
+            payment_method: defaultValues.payment_method || "credit",
+            amount_paid: Number(defaultValues.amount_paid) || 0,
+            bill_line_items: defaultValues.bill_line_items?.map((item, index) => ({
+                ...DEFAULT_LINE_ITEM,
+                ...item,
+                qty: Number(item.qty) || 0,
+                unit_price: Number(item.unit_price) || 0,
+                discount_pct: Number(item.discount_pct) || 0,
+                gst_rate: Number(item.gst_rate) || 0,
+                sort_order: index,
+            })) || [{ ...DEFAULT_LINE_ITEM }],
+        } as Partial<BillFormData>;
+    }, [defaultValues]);
+
+    //1. Initialize React hook form
+    const {
+        register,
+        control,
+        handleSubmit,
+        watch,
+        setValue,
+        reset,
+        formState: { errors, isSubmitting },
+    } = useForm<BillFormData>({
+        resolver: zodResolver(billSchema) as Resolver<BillFormData>,
+        defaultValues: initialFormValues,
     });
 
     useEffect(() => {
-        if (defaultValues && Object.keys(defaultValues).length > 0) {
-            reset({
-                bill_date: getLocalDateString(new Date().toISOString()),
-                customer_type: "" as unknown as "registered",
-                status: "" as unknown as "issued",
-                payment_method: "credit",
-                amount_paid: 0,
-                round_off: 0,
-                discount_amount: 0,
-                total_profit: 0,
-                vehicle_no: "",
-                reference_name: "",
-                terms_conditions: "",
-                bill_line_items: [DEFAULT_LINE_ITEM], // Ensures the array NEVER becomes undefined
-                ...defaultValues
-            } as BillFormData);
+        if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
+            reset(initialFormValues as BillFormData);
+        }
+    }, [initialFormValues, reset, type, defaultValues]);
 
-            if (defaultValues.customer_type === "registered" && defaultValues.customer_id) {
-                const found = customers.find(c => c.id === defaultValues.customer_id);
-                if (found) setCustomerSearch(found.name);
+    useEffect(() => {
+        if (defaultValues?.customer_type === "registered" && defaultValues.customer_id && customers.length > 0) {
+            const found = customers.find(c => c.id === defaultValues.customer_id);
+            if (found && customerSearch === "") {
+                setCustomerSearch(found.name);
             }
         }
-    }, [defaultValues, reset, customers]);
+    }, [defaultValues?.customer_type, defaultValues?.customer_id, customers, customerSearch]);
 
     //2. Initialize field array for dynamic line items
     const { fields, append, remove } = useFieldArray({
@@ -794,11 +814,20 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                     .filter(Boolean);
 
                                 const filteredItems = items
-                                    .filter(i => i.name.toLowerCase().includes(searchLower))
+                                    .filter(i => 
+                                        i.name.toLowerCase().includes(searchLower) || 
+                                        (i.sku && i.sku.toLowerCase().includes(searchLower))
+                                    )
                                     .sort((a, b) => {
                                         // Prioritize items that START with the search term
-                                        const aStarts = a.name.toLowerCase().startsWith(searchLower);
-                                        const bStarts = b.name.toLowerCase().startsWith(searchLower);
+                                        const aNameStarts = a.name.toLowerCase().startsWith(searchLower);
+                                        const bNameStarts = b.name.toLowerCase().startsWith(searchLower);
+                                        const aSkuStarts = !!(a.sku && a.sku.toLowerCase().startsWith(searchLower));
+                                        const bSkuStarts = !!(b.sku && b.sku.toLowerCase().startsWith(searchLower));
+
+                                        const aStarts = aNameStarts || aSkuStarts;
+                                        const bStarts = bNameStarts || bSkuStarts;
+
                                         if (aStarts && !bStarts) return -1;
                                         if (!aStarts && bStarts) return 1;
                                         return 0; // If both or neither start with it, keep original order
