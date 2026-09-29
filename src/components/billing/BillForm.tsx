@@ -80,6 +80,8 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         return {
             ...baseValues,
             ...defaultValues,
+            bill_date: defaultValues.bill_date ? getLocalDateString(defaultValues.bill_date) : baseValues.bill_date,
+            bill_number: defaultValues.bill_number || "",
             vehicle_no: defaultValues.vehicle_no || "",
             reference_name: defaultValues.reference_name || "",
             terms_conditions: defaultValues.terms_conditions || "",
@@ -131,7 +133,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                 resetTo: { bill_number: initialFormValues.bill_number, bill_date: initialFormValues.bill_date },
                 currentInForm: { bill_number: getValues("bill_number"), bill_date: getValues("bill_date") },
             });
-            reset(initialFormValues as BillFormData);
+            reset(initialFormValues as BillFormData, { keepDirty: true });
         }
     }, [initialFormValues, reset, type, defaultValues]);
 
