@@ -2,7 +2,6 @@ import { createBill, createSalesReturn, deleteBill, deleteSalesReturn, fetchAllB
 import { BillFormData } from "@/lib/validations/billSchema";
 import { SalesReturnFormData } from "@/lib/validations/salesReturnSchema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Variable } from "lucide-react";
 
 export function useBills(tenantId: string) {
     return useQuery({

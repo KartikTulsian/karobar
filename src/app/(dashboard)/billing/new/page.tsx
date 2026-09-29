@@ -15,13 +15,18 @@ export default function CreateBillPage() {
   const activeTenant = useTenantStore((state) => state.activeTenant);
   const tenantId = activeTenant?.tenantId || "";
 
-  const { data: nextBillPreview } = useNextBillNumberPreview(tenantId, true)
+  const { data: nextBillPreview } = useNextBillNumberPreview(tenantId, true);
+  console.log("[BILL-DBG preview hook]", { tenantId, nextBillPreview });
 
   const { mutateAsync: createBill, isPending } = useCreateBill(tenantId);
 
   const [billType, setBillType] = useState<"gst" | "non-gst" | null>(null);
 
   const handleCreateSubmit = async (data: BillFormData) => {
+    console.log("[DEBUG - page.tsx] Payload received from BillForm:", {
+        bill_number: data.bill_number,
+        bill_date: data.bill_date
+    });
     try {
       const newBill = await createBill(data);
       toast.success("Bill Generated successfully!");

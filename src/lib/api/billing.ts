@@ -376,13 +376,13 @@ export async function fetchNextBillNumberPreview(tenantId: string): Promise<stri
             nextSeq = lastSeq + 1;
         }
     }
-
+    console.log("[BILL-DBG preview fn]", { prefix, lastBill, nextSeq, result: `${prefix}${nextSeq}` });
     return `${prefix}${nextSeq}`;
 }
 
 export async function createBill(tenantId: string, data: BillFormData) {
     console.log(`\n=== [DEBUG - createBill] ===`);
-    console.log(`[DEBUG] Incoming Bill Data:`, JSON.stringify(data, null, 2));
+    console.log(`[DEBUG - API] 1. Incoming Bill Data:`, JSON.stringify(data, null, 2));
 
     const { data: { user: currentUser } } = await supabase.auth.getUser();
 
@@ -445,6 +445,8 @@ export async function createBill(tenantId: string, data: BillFormData) {
     // 3. Extract the clean data to continue saving
     const safeData = checkResult.sanitizedData;
 
+    console.log(`[DEBUG - API] 2. Safe Bill Data:`, JSON.stringify(safeData, null, 2));
+
     const finalCustomerId = await resolveCustomer(tenantId, safeData, false);
 
     let finalBillNumber = safeData.bill_number?.trim();
@@ -477,6 +479,8 @@ export async function createBill(tenantId: string, data: BillFormData) {
         // Example output: INV-2026/07/18-11
         finalBillNumber = `${prefix}${nextSeq}`;
     }
+
+    console.log(`[DEBUG - API] 3. Final DB Insert Payload -> finalBillNumber: "${finalBillNumber}", finalBillDate: "${safeData.bill_date}"`, JSON.stringify(safeData, null, 2));
 
     const { data: newBill, error: billError } = await supabase
         .from('bills')
@@ -569,7 +573,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
 
 export async function updateBill(tenantId: string, billId: string, data: BillFormData) {
     console.log(`\n=== [DEBUG - updateBill] ===`);
-    console.log(`[DEBUG] Updating Bill ID: ${billId}`);
+    console.log(`[DEBUG - API] 1. Initial Data received by API -> bill_number: "${data.bill_number}", bill_date: "${data.bill_date}"`);
     const finalCustomerId = await resolveCustomer(tenantId, data, true);
 
     // 1. Fetch CURRENT items held in this bill to prevent Gatekeeper double-counting
@@ -659,6 +663,8 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     }
     const safeData = checkResult.sanitizedData;
 
+    console.log(`[DEBUG - API] 2. Data AFTER CalculationEngine -> bill_number: "${safeData.bill_number}", bill_date: "${safeData.bill_date}"`);
+
     const { data: oldBill } = await supabase
         .from('bills')
         .select('grand_total, amount_due, amount_paid, settlement_discount, customer_id, bill_number')
@@ -686,6 +692,8 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     const safeAmountDue = Math.max(0, netBill - effectivePaid - currentDiscount);
     const safeStatus = safeAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : data.status);
 
+    console.log(`[DEBUG - API] 3. Final DB Update Payload -> finalBillNumber: "${data.bill_number?.trim() || oldBill.bill_number}", finalBillDate: "${data.bill_date}"`);
+    
     const { data: updatedBill, error: billError } = await supabase
         .from('bills')
         .update({
