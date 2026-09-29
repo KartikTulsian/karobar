@@ -109,6 +109,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         watch,
         setValue,
         reset,
+        getValues,
         formState: { errors, isSubmitting },
     } = useForm<BillFormData>({
         resolver: zodResolver(billSchema) as Resolver<BillFormData>,
@@ -116,10 +117,24 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
     });
 
     useEffect(() => {
+        const sub = watch((v, { name }) => {
+            if (name === undefined || name === "bill_number" || name === "bill_date") {
+                console.log("[BILL-DBG WATCH]", name ?? "(WHOLE FORM RESET)", v.bill_number, v.bill_date);
+            }
+        });
+        return () => sub.unsubscribe();
+    }, [watch]);
+
+    useEffect(() => {
         if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
+            console.log("[BILL-DBG RESET]", {
+                resetTo: { bill_number: initialFormValues.bill_number, bill_date: initialFormValues.bill_date },
+                currentInForm: { bill_number: getValues("bill_number"), bill_date: getValues("bill_date") },
+            });
             reset(initialFormValues as BillFormData);
         }
     }, [initialFormValues, reset, type, defaultValues]);
+
 
     useEffect(() => {
         if (defaultValues?.customer_type === "registered" && defaultValues.customer_id && customers.length > 0) {
