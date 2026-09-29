@@ -19,11 +19,16 @@ import { BillDetail } from '@/types/billing';
 import { getLocalDateString, mergeDateWithOriginalTime } from '@/lib/utils';
 import { ArrowLeft, CreditCard, Download, Edit, Eye, EyeOff, Loader2, Printer, Trash2, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 
 const mapBillToFormData = (bill: BillDetail | null): Partial<BillFormData> | undefined => {
     if (!bill) return undefined;
+    console.log("[BILL-DBG M1] mapBillToFormData called", {
+        raw_bill_number: bill.bill_number,
+        raw_bill_date: bill.bill_date,
+        mapped_bill_date: getLocalDateString(bill.bill_date),
+    });
     return {
         id: bill.id,
         bill_number: bill.bill_number,
@@ -93,18 +98,76 @@ export default function BillDetailsPage() {
 
     const [showProfit, setShowProfit] = useState(false);
 
+    useEffect(() => {
+        if (!bill) return;
+        console.log("[BILL-DBG M2] bill loaded from DB", {
+            id: bill.id,
+            bill_number: bill.bill_number,
+            bill_date: bill.bill_date,
+            // cast: created_at / updated_at may not be declared on the BillDetail type
+            created_at: (bill as unknown as Record<string, unknown>).created_at,
+            updated_at: (bill as unknown as Record<string, unknown>).updated_at,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bill?.id, bill?.bill_number, bill?.bill_date]);
+
+    // const handleUpdateSubmit = async (data: BillFormData) => {
+    //     try {
+    //         await updateBill({
+    //             billId,
+    //             data: {
+    //                 ...data,
+    //                 bill_date: mergeDateWithOriginalTime(data.bill_date, bill?.bill_date),
+    //             },
+    //         });
+    //         toast.success("Bill updated successfully!");
+    //         setIsModalOpen(false);
+    //     } catch (error) {
+    //         toast.error(error instanceof Error ? error.message : "Failed to update bill.");
+    //     }
+    // }
+
     const handleUpdateSubmit = async (data: BillFormData) => {
         try {
-            await updateBill({
+            // [BILL-DBG E1] Form value vs stored value vs what mergeDateWithOriginalTime returns
+            const mergedDate = mergeDateWithOriginalTime(data.bill_date, bill?.bill_date);
+            console.log("[BILL-DBG E1] date merge", {
+                formDate: data.bill_date,
+                storedDate: bill?.bill_date,
+                mergedDate,
+                changedByMerge: mergedDate !== data.bill_date,
+            });
+            console.log("[BILL-DBG E2] bill_number", {
+                fromForm: data.bill_number,
+                stored: bill?.bill_number,
+                changedByUser: data.bill_number !== bill?.bill_number,
+            });
+
+            const payload: BillFormData = {
+                ...data,
+                bill_date: mergedDate,
+            };
+            // [BILL-DBG E3] Exact payload handed to the useUpdateBill mutation
+            console.log("[BILL-DBG E3] payload to updateBill", {
                 billId,
-                data: {
-                    ...data,
-                    bill_date: mergeDateWithOriginalTime(data.bill_date, bill?.bill_date),
-                },
+                bill_number: payload.bill_number,
+                bill_date: payload.bill_date,
+            });
+
+            const updated = await updateBill({ billId, data: payload });
+
+            // [BILL-DBG E4] Row RETURNED BY THE DB after the update (this is what was really stored)
+            console.log("[BILL-DBG E4] DB row after update", {
+                sent: { bill_number: payload.bill_number, bill_date: payload.bill_date },
+                stored: { bill_number: updated?.bill_number, bill_date: updated?.bill_date },
+                matches:
+                    updated?.bill_number === payload.bill_number &&
+                    String(updated?.bill_date).slice(0, 10) === String(payload.bill_date).slice(0, 10),
             });
             toast.success("Bill updated successfully!");
             setIsModalOpen(false);
         } catch (error) {
+            console.error("[BILL-DBG E5] update failed", error);
             toast.error(error instanceof Error ? error.message : "Failed to update bill.");
         }
     }

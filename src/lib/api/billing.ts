@@ -513,6 +513,12 @@ export async function createBill(tenantId: string, data: BillFormData) {
         .select()
         .single();
 
+    console.log("[BILL-DBG DB row after INSERT]", {
+        sent: { bill_number: finalBillNumber, bill_date: safeData.bill_date },
+        stored: { bill_number: newBill?.bill_number, bill_date: newBill?.bill_date },
+        error: billError?.message,
+    });
+
     if (billError) {
         console.error("Database Error creating bill:", billError.message);
         throw new Error(billError.message || "Failed to create bill.");
@@ -693,7 +699,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     const safeStatus = safeAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : data.status);
 
     console.log(`[DEBUG - API] 3. Final DB Update Payload -> finalBillNumber: "${data.bill_number?.trim() || oldBill.bill_number}", finalBillDate: "${data.bill_date}"`);
-    
+
     const { data: updatedBill, error: billError } = await supabase
         .from('bills')
         .update({
@@ -724,6 +730,12 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
         .eq('id', billId)
         .select()
         .single();
+
+    console.log("[BILL-DBG DB row after UPDATE]", {
+        sent: { bill_number: data.bill_number?.trim() || oldBill.bill_number, bill_date: data.bill_date },
+        stored: { bill_number: updatedBill?.bill_number, bill_date: updatedBill?.bill_date },
+        error: billError?.message,
+    });
 
     if (billError) {
         throw new Error(billError.message || "Failed to update bill.");

@@ -656,7 +656,10 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                     ? `Auto: ${nextBillPreview}`
                                     : "Auto-generated if empty",
                                 onFocus: (e) => {
-                                    console.log("[DEBUG - BillForm] Setting bill_number to preview:", nextBillPreview);
+                                    console.log("[BILL-DBG focus]", {
+                                        type, nextBillPreview, currentValue: e.target.value,
+                                        willFill: type === "create" && !!nextBillPreview && !e.target.value,
+                                    });
                                     if (type === "create" && nextBillPreview && !e.target.value) {
                                         setValue("bill_number", nextBillPreview, {
                                             shouldValidate: true,
