@@ -33,13 +33,16 @@ export function useCreateBill(tenantId: string) {
 
     return useMutation({
         mutationFn: (data: BillFormData) => createBill(tenantId, data),
-        onSuccess: () => {
-            // Instantly refreshes the main bills table
-            queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] });
+        onSuccess: async () => {
+            await Promise.all ([
+                // Instantly refreshes the main bills table
+            queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] }),
 
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+            queryClient.invalidateQueries({ queryKey: ['customers', tenantId] }),
+            queryClient.invalidateQueries({ queryKey: ['customer_profile'] }),
+            ])
+            
         },
     });
 }
@@ -50,15 +53,17 @@ export function useUpdateBill(tenantId: string) {
     return useMutation({
         mutationFn: ({ billId, data }: { billId: string, data: BillFormData }) =>
             updateBill(tenantId, billId, data),
-        onSuccess: (_, Variables) => {
-            //Refresh the main table
-            queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] });
-            //Refresh the specific bill details page if the user is looking at it
-            queryClient.invalidateQueries({ queryKey: ['bill', Variables.billId, tenantId] });
+        onSuccess: async (_, Variables) => {
+            await Promise.all([
+                //Refresh the main table
+                queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] }),
+                //Refresh the specific bill details page if the user is looking at it
+                queryClient.invalidateQueries({ queryKey: ['bill', Variables.billId, tenantId] }),
 
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['customer_profile'] });
+                queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['customers', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['customer_profile'] }),
+            ]);
         },
     });
 }

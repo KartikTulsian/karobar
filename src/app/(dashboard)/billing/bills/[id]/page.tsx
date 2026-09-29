@@ -111,66 +111,63 @@ export default function BillDetailsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bill?.id, bill?.bill_number, bill?.bill_date]);
 
-    // const handleUpdateSubmit = async (data: BillFormData) => {
-    //     try {
-    //         await updateBill({
-    //             billId,
-    //             data: {
-    //                 ...data,
-    //                 bill_date: mergeDateWithOriginalTime(data.bill_date, bill?.bill_date),
-    //             },
-    //         });
-    //         toast.success("Bill updated successfully!");
-    //         setIsModalOpen(false);
-    //     } catch (error) {
-    //         toast.error(error instanceof Error ? error.message : "Failed to update bill.");
-    //     }
-    // }
-
     const handleUpdateSubmit = async (data: BillFormData) => {
         try {
-            // [BILL-DBG E1] Form value vs stored value vs what mergeDateWithOriginalTime returns
-            const mergedDate = mergeDateWithOriginalTime(data.bill_date, bill?.bill_date);
-            console.log("[BILL-DBG E1] date merge", {
-                formDate: data.bill_date,
-                storedDate: bill?.bill_date,
-                mergedDate,
-                changedByMerge: mergedDate !== data.bill_date,
-            });
-            console.log("[BILL-DBG E2] bill_number", {
-                fromForm: data.bill_number,
-                stored: bill?.bill_number,
-                changedByUser: data.bill_number !== bill?.bill_number,
-            });
-
-            const payload: BillFormData = {
-                ...data,
-                bill_date: mergedDate,
-            };
-            // [BILL-DBG E3] Exact payload handed to the useUpdateBill mutation
-            console.log("[BILL-DBG E3] payload to updateBill", {
+            await updateBill({
                 billId,
-                bill_number: payload.bill_number,
-                bill_date: payload.bill_date,
-            });
-
-            const updated = await updateBill({ billId, data: payload });
-
-            // [BILL-DBG E4] Row RETURNED BY THE DB after the update (this is what was really stored)
-            console.log("[BILL-DBG E4] DB row after update", {
-                sent: { bill_number: payload.bill_number, bill_date: payload.bill_date },
-                stored: { bill_number: updated?.bill_number, bill_date: updated?.bill_date },
-                matches:
-                    updated?.bill_number === payload.bill_number &&
-                    String(updated?.bill_date).slice(0, 10) === String(payload.bill_date).slice(0, 10),
+                data
             });
             toast.success("Bill updated successfully!");
             setIsModalOpen(false);
         } catch (error) {
-            console.error("[BILL-DBG E5] update failed", error);
             toast.error(error instanceof Error ? error.message : "Failed to update bill.");
         }
     }
+
+    // const handleUpdateSubmit = async (data: BillFormData) => {
+    //     try {
+    //         // [BILL-DBG E1] Form value vs stored value vs what mergeDateWithOriginalTime returns
+    //         const mergedDate = mergeDateWithOriginalTime(data.bill_date, bill?.bill_date);
+    //         console.log("[BILL-DBG E1] date merge", {
+    //             formDate: data.bill_date,
+    //             storedDate: bill?.bill_date,
+    //             mergedDate,
+    //             changedByMerge: mergedDate !== data.bill_date,
+    //         });
+    //         console.log("[BILL-DBG E2] bill_number", {
+    //             fromForm: data.bill_number,
+    //             stored: bill?.bill_number,
+    //             changedByUser: data.bill_number !== bill?.bill_number,
+    //         });
+
+    //         const payload: BillFormData = {
+    //             ...data,
+    //             bill_date: mergedDate,
+    //         };
+    //         // [BILL-DBG E3] Exact payload handed to the useUpdateBill mutation
+    //         console.log("[BILL-DBG E3] payload to updateBill", {
+    //             billId,
+    //             bill_number: payload.bill_number,
+    //             bill_date: payload.bill_date,
+    //         });
+
+    //         const updated = await updateBill({ billId, data: payload });
+
+    //         // [BILL-DBG E4] Row RETURNED BY THE DB after the update (this is what was really stored)
+    //         console.log("[BILL-DBG E4] DB row after update", {
+    //             sent: { bill_number: payload.bill_number, bill_date: payload.bill_date },
+    //             stored: { bill_number: updated?.bill_number, bill_date: updated?.bill_date },
+    //             matches:
+    //                 updated?.bill_number === payload.bill_number &&
+    //                 String(updated?.bill_date).slice(0, 10) === String(payload.bill_date).slice(0, 10),
+    //         });
+    //         toast.success("Bill updated successfully!");
+    //         setIsModalOpen(false);
+    //     } catch (error) {
+    //         console.error("[BILL-DBG E5] update failed", error);
+    //         toast.error(error instanceof Error ? error.message : "Failed to update bill.");
+    //     }
+    // }
 
     const handleDeleteSubmit = async () => {
         try {
