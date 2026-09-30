@@ -645,7 +645,7 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     // // Step B: Update Parent PO
     const currentPaid = Number(oldPO.amount_paid || 0);
     const currentDiscount = Number(oldPO.settlement_discount || 0);
-    const finalAmountDue = Math.max(0, safeData.amount_due - currentPaid - currentDiscount);
+    const finalAmountDue = Math.max(0, safeData.total_amount - currentPaid - currentDiscount);
     const safePaymentStatus = finalAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : safeData.payment_status);
 
     const { data: updatedPO, error: poError } = await supabase
