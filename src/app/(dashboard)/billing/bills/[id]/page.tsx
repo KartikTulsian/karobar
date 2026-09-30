@@ -19,16 +19,13 @@ import { BillDetail } from '@/types/billing';
 import { getLocalDateString, mergeDateWithOriginalTime } from '@/lib/utils';
 import { ArrowLeft, CreditCard, Download, Edit, Eye, EyeOff, Loader2, Printer, Trash2, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
+import { flow } from '@/lib/debug';
 
 const mapBillToFormData = (bill: BillDetail | null): Partial<BillFormData> | undefined => {
     if (!bill) return undefined;
-    console.log("[BILL-DBG M1] mapBillToFormData called", {
-        raw_bill_number: bill.bill_number,
-        raw_bill_date: bill.bill_date,
-        mapped_bill_date: getLocalDateString(bill.bill_date),
-    });
+
     return {
         id: bill.id,
         bill_number: bill.bill_number,
@@ -96,78 +93,28 @@ export default function BillDetailsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState<"update" | "delete" | "payment">("update");
 
+    const [formSession, setFormSession] = useState(0); // bumped on every "Edit" click -> fresh form
+
     const [showProfit, setShowProfit] = useState(false);
 
-    useEffect(() => {
-        if (!bill) return;
-        console.log("[BILL-DBG M2] bill loaded from DB", {
-            id: bill.id,
-            bill_number: bill.bill_number,
-            bill_date: bill.bill_date,
-            // cast: created_at / updated_at may not be declared on the BillDetail type
-            created_at: (bill as unknown as Record<string, unknown>).created_at,
-            updated_at: (bill as unknown as Record<string, unknown>).updated_at,
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bill?.id, bill?.bill_number, bill?.bill_date]);
+    const formDefaults = useMemo(() => mapBillToFormData(bill ?? null), [bill]);
 
     const handleUpdateSubmit = async (data: BillFormData) => {
+        flow("P1 edit page got form data", { stored: bill?.bill_number, bill_number: data.bill_number, bill_date: data.bill_date });
         try {
-            await updateBill({
-                billId,
-                data
-            });
+            // await updateBill({
+            //     billId,
+            //     data
+            // });
+
+            const saved = await updateBill({ billId, data });
+            flow("P2 edit page save finished", { bill_number: saved?.bill_number, bill_date: saved?.bill_date });
             toast.success("Bill updated successfully!");
             setIsModalOpen(false);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to update bill.");
         }
     }
-
-    // const handleUpdateSubmit = async (data: BillFormData) => {
-    //     try {
-    //         // [BILL-DBG E1] Form value vs stored value vs what mergeDateWithOriginalTime returns
-    //         const mergedDate = mergeDateWithOriginalTime(data.bill_date, bill?.bill_date);
-    //         console.log("[BILL-DBG E1] date merge", {
-    //             formDate: data.bill_date,
-    //             storedDate: bill?.bill_date,
-    //             mergedDate,
-    //             changedByMerge: mergedDate !== data.bill_date,
-    //         });
-    //         console.log("[BILL-DBG E2] bill_number", {
-    //             fromForm: data.bill_number,
-    //             stored: bill?.bill_number,
-    //             changedByUser: data.bill_number !== bill?.bill_number,
-    //         });
-
-    //         const payload: BillFormData = {
-    //             ...data,
-    //             bill_date: mergedDate,
-    //         };
-    //         // [BILL-DBG E3] Exact payload handed to the useUpdateBill mutation
-    //         console.log("[BILL-DBG E3] payload to updateBill", {
-    //             billId,
-    //             bill_number: payload.bill_number,
-    //             bill_date: payload.bill_date,
-    //         });
-
-    //         const updated = await updateBill({ billId, data: payload });
-
-    //         // [BILL-DBG E4] Row RETURNED BY THE DB after the update (this is what was really stored)
-    //         console.log("[BILL-DBG E4] DB row after update", {
-    //             sent: { bill_number: payload.bill_number, bill_date: payload.bill_date },
-    //             stored: { bill_number: updated?.bill_number, bill_date: updated?.bill_date },
-    //             matches:
-    //                 updated?.bill_number === payload.bill_number &&
-    //                 String(updated?.bill_date).slice(0, 10) === String(payload.bill_date).slice(0, 10),
-    //         });
-    //         toast.success("Bill updated successfully!");
-    //         setIsModalOpen(false);
-    //     } catch (error) {
-    //         console.error("[BILL-DBG E5] update failed", error);
-    //         toast.error(error instanceof Error ? error.message : "Failed to update bill.");
-    //     }
-    // }
 
     const handleDeleteSubmit = async () => {
         try {
@@ -240,7 +187,7 @@ export default function BillDetailsPage() {
                     {currentRole === "owner" && (
                         <div className='flex gap-3'>
                             <button
-                                onClick={() => { setModalType("update"); setIsModalOpen(true); }}
+                                onClick={() => { setModalType("update"); setFormSession((n) => n + 1); setIsModalOpen(true); }}
                                 className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-blue-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
                             >
                                 <Edit className="mr-2 h-4 w-4" /> Edit Invoice
@@ -367,10 +314,11 @@ export default function BillDetailsPage() {
                     </div>
                 ) : (
                     <BillForm
+                        key={`${billId}-${formSession}`}
                         type="update"
                         tenantId={tenantId}
                         isModal={true}
-                        defaultValues={mapBillToFormData(bill)}
+                        defaultValues={formDefaults}
                         onCancel={() => setIsModalOpen(false)}
                         onSubmit={handleUpdateSubmit}
                     />

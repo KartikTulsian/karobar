@@ -2,6 +2,7 @@
 
 import BillForm from '@/components/billing/BillForm';
 import { useCreateBill, useNextBillNumberPreview } from '@/hooks/useBilling';
+import { flow } from '@/lib/debug';
 import { BillFormData } from '@/lib/validations/billSchema';
 import { useTenantStore } from '@/store/useTenantStore';
 import { ArrowLeft, FileMinus, Receipt } from 'lucide-react';
@@ -16,19 +17,16 @@ export default function CreateBillPage() {
   const tenantId = activeTenant?.tenantId || "";
 
   const { data: nextBillPreview } = useNextBillNumberPreview(tenantId, true);
-  console.log("[BILL-DBG preview hook]", { tenantId, nextBillPreview });
 
   const { mutateAsync: createBill, isPending } = useCreateBill(tenantId);
 
   const [billType, setBillType] = useState<"gst" | "non-gst" | null>(null);
 
   const handleCreateSubmit = async (data: BillFormData) => {
-    console.log("[DEBUG - page.tsx] Payload received from BillForm:", {
-        bill_number: data.bill_number,
-        bill_date: data.bill_date
-    });
+    flow("P1 create page got form data", { preview: nextBillPreview, bill_number: data.bill_number, bill_date: data.bill_date });
     try {
       const newBill = await createBill(data);
+      flow("P2 create page save finished", { id: newBill?.id, bill_number: newBill?.bill_number, bill_date: newBill?.bill_date });
       toast.success("Bill Generated successfully!");
       router.push(`/billing/bills/${newBill.id}`);
     } catch (error) {
