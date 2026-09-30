@@ -53,6 +53,11 @@ export default function POHeader({ po, tenant }: { po: PurchaseOrderDetail, tena
                     <p className="text-slate-600 dark:text-slate-300">
                         <span className="font-medium text-slate-400">Date:</span> {new Date(po.order_date).toLocaleDateString('en-GB')}
                     </p>
+                    {po.expected_date && (
+                        <p className="text-slate-600 dark:text-slate-300">
+                            <span className="font-medium text-slate-400">Expected Date:</span> {new Date(po.expected_date).toLocaleDateString('en-GB')}
+                        </p>
+                    )}
                     {po.vehicle_no && (
                         <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                             <p className="text-slate-600 dark:text-slate-300 flex items-center justify-start md:justify-end gap-2">
