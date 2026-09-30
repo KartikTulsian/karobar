@@ -16,12 +16,11 @@ import { BillFormData } from '@/lib/validations/billSchema';
 import { PaymentFormData } from '@/lib/validations/paymentSchema';
 import { useTenantStore } from '@/store/useTenantStore';
 import { BillDetail } from '@/types/billing';
-import { getLocalDateString, mergeDateWithOriginalTime } from '@/lib/utils';
+import { getLocalDateString } from '@/lib/utils';
 import { ArrowLeft, CreditCard, Download, Edit, Eye, EyeOff, Loader2, Printer, Trash2, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
-import { flow } from '@/lib/debug';
 
 const mapBillToFormData = (bill: BillDetail | null): Partial<BillFormData> | undefined => {
     if (!bill) return undefined;
@@ -100,15 +99,8 @@ export default function BillDetailsPage() {
     const formDefaults = useMemo(() => mapBillToFormData(bill ?? null), [bill]);
 
     const handleUpdateSubmit = async (data: BillFormData) => {
-        flow("P1 edit page got form data", { stored: bill?.bill_number, bill_number: data.bill_number, bill_date: data.bill_date });
         try {
-            // await updateBill({
-            //     billId,
-            //     data
-            // });
-
             const saved = await updateBill({ billId, data });
-            flow("P2 edit page save finished", { bill_number: saved?.bill_number, bill_date: saved?.bill_date });
             toast.success("Bill updated successfully!");
             setIsModalOpen(false);
         } catch (error) {

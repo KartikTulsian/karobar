@@ -16,10 +16,10 @@ import { PaymentFormData } from "@/lib/validations/paymentSchema";
 import { PurchaseOrderFormData } from "@/lib/validations/purchaseOrderSchema";
 import { useTenantStore } from "@/store/useTenantStore";
 import { PurchaseOrderDetail } from "@/types/purchases";
-import { getLocalDateString, mergeDateWithOriginalTime } from "@/lib/utils";
+import { getLocalDateString } from "@/lib/utils";
 import { ArrowLeft, CreditCard, Download, Edit, Loader2, Printer, Trash2, XCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 const mapPOToFormData = (po: PurchaseOrderDetail | null): Partial<PurchaseOrderFormData> | undefined => {
@@ -102,15 +102,16 @@ export default function PurchaseOrderDetailsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState<"update" | "delete" | "payment">("update");
 
+    const [formSession, setFormSession] = useState(0);
+
+    const formDefaults = useMemo(() => mapPOToFormData(po ?? null), [po]);
+
     // Handlers
     const handleUpdateSubmit = async (data: PurchaseOrderFormData) => {
         try {
             await updatePO({
                 poId,
-                data: {
-                    ...data,
-                    order_date: mergeDateWithOriginalTime(data.order_date, po?.order_date),
-                },
+                data
             });
             toast.success("Purchase Order updated successfully!");
             setIsModalOpen(false);
@@ -177,7 +178,7 @@ export default function PurchaseOrderDetailsPage() {
                     {currentRole === "owner" && (
                         <div className="flex gap-2 mr-2">
                             <button
-                                onClick={() => { setModalType("update"); setIsModalOpen(true); }}
+                                onClick={() => { setModalType("update"); setFormSession((n) => n + 1); setIsModalOpen(true); }}
                                 className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-blue-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700"
                             >
                                 <Edit className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Edit PO</span>
@@ -302,10 +303,11 @@ export default function PurchaseOrderDetailsPage() {
                     </div>
                 ) : (
                     <PurchaseOrderForm
+                        key={`${poId}-${formSession}`}
                         type="update"
                         tenantId={tenantId}
                         isModal={true}
-                        defaultValues={mapPOToFormData(po)}
+                        defaultValues={formDefaults}
                         onCancel={() => setIsModalOpen(false)}
                         onSubmit={handleUpdateSubmit}
                     />

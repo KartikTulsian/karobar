@@ -1,5 +1,4 @@
 import { createBill, createSalesReturn, deleteBill, deleteSalesReturn, fetchAllBills, fetchBillById, fetchNextBillNumberPreview, fetchSalesReturns, updateBill, updateSalesReturn } from "@/lib/api/billing";
-import { flow } from "@/lib/debug";
 import { BillFormData } from "@/lib/validations/billSchema";
 import { SalesReturnFormData } from "@/lib/validations/salesReturnSchema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,12 +32,8 @@ export function useCreateBill(tenantId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (data: BillFormData) => {
-            flow("H1 useCreateBill sending", { bill_number: data.bill_number, bill_date: data.bill_date });
-            return createBill(tenantId, data);
-        },
-        onSuccess: async (saved) => {
-            flow("H2 useCreateBill saved", { id: saved?.id, bill_number: saved?.bill_number, bill_date: saved?.bill_date });
+        mutationFn: (data: BillFormData) => createBill(tenantId, data),
+        onSuccess: async () => {
             await Promise.all ([
                 // Instantly refreshes the main bills table
             queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] }),
@@ -56,12 +51,9 @@ export function useUpdateBill(tenantId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ billId, data }: { billId: string, data: BillFormData }) => {
-            flow("H1 useUpdateBill sending", { billId, bill_number: data.bill_number, bill_date: data.bill_date });
-            return updateBill(tenantId, billId, data);
-        },
-        onSuccess: async (saved, Variables) => {
-            flow("H2 useUpdateBill saved", { bill_number: saved?.bill_number, bill_date: saved?.bill_date });
+        mutationFn: ({ billId, data }: { billId: string, data: BillFormData }) =>
+            updateBill(tenantId, billId, data),
+        onSuccess: async (_, Variables) => {
             await Promise.all([
                 //Refresh the main table
                 queryClient.invalidateQueries({ queryKey: ['bills', 'all', tenantId] }),

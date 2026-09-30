@@ -101,18 +101,17 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         watch,
         setValue,
         getValues,
-        reset,
         formState: { errors, isSubmitting },
     } = useForm<PurchaseOrderFormData>({
         resolver: zodResolver(purchaseOrderSchema) as Resolver<PurchaseOrderFormData>,
         defaultValues: initialFormValues,
     });
 
-    useEffect(() => {
-        if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
-            reset(initialFormValues as PurchaseOrderFormData);
-        }
-    }, [initialFormValues, reset, type, defaultValues]);
+    // useEffect(() => {
+    //     if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
+    //         reset(initialFormValues as PurchaseOrderFormData);
+    //     }
+    // }, [initialFormValues, reset, type, defaultValues]);
 
     const { fields, append, remove } = useFieldArray({
         control,

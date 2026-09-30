@@ -81,12 +81,14 @@ export function useCreatePurchaseOrder(tenantId: string) {
 
     return useMutation({
         mutationFn: (data: PurchaseOrderFormData) => createPurchaseOrder(tenantId, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['purchase_orders', tenantId] });
-            // Invalidate inventory because stock may have increased from received items
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
+        onSuccess: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['purchase_orders', tenantId] }),
+                // Invalidate inventory because stock may have increased from received items
+                queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['supplier_profile'] }),
+            ]);
         },
     })
 }
@@ -97,12 +99,14 @@ export function useUpdatePurchaseOrder(tenantId: string) {
     return useMutation({
         mutationFn: ({ poId, data }: { poId: string, data: PurchaseOrderFormData }) => 
             updatePurchaseOrder(tenantId, poId, data),
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['purchase_orders', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['purchase_order', variables.poId, tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['supplier_profile'] });
+        onSuccess: async (_, variables) => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['purchase_orders', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['purchase_order', variables.poId, tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['suppliers', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['supplier_profile'] }),
+            ]);
         },
     });
 }

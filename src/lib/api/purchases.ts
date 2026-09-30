@@ -466,7 +466,7 @@ export async function fetchNextPONumberPreview(tenantId: string): Promise<string
         .ilike('po_number', `${prefix}%`)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
     let nextSeq = 1;
     if (lastPO && lastPO.po_number) {
@@ -652,7 +652,7 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
         .from('purchase_orders')
         .update({
             supplier_id: safeData.supplier_id,
-            po_number: safeData.po_number,
+            po_number: safeData.po_number?.trim() || oldPO.po_number,
             status: safeData.status,
             payment_status: safePaymentStatus,
             payment_method: safeData.payment_method,

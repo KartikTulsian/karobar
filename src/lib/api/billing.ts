@@ -4,7 +4,6 @@ import { BillFormData } from "../validations/billSchema";
 import { SalesReturnFormData } from "../validations/salesReturnSchema";
 import { CalculationEngine } from "../services/CalculationEngine";
 import { getLocalDateString } from "../utils";
-import { flow } from "../debug";
 
 export async function fetchAllBills(
     tenantId: string,
@@ -381,7 +380,6 @@ export async function fetchNextBillNumberPreview(tenantId: string): Promise<stri
 }
 
 export async function createBill(tenantId: string, data: BillFormData) {
-    flow("A1 createBill received", { bill_number: data.bill_number, bill_date: data.bill_date });
     console.log(`\n=== [DEBUG - createBill] ===`);
     
     const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -478,8 +476,6 @@ export async function createBill(tenantId: string, data: BillFormData) {
         finalBillNumber = `${prefix}${nextSeq}`;
     }
 
-    flow("A2 createBill inserting", { bill_number: finalBillNumber, bill_date: safeData.bill_date });
-
     const { data: newBill, error: billError } = await supabase
         .from('bills')
         .insert({
@@ -510,8 +506,6 @@ export async function createBill(tenantId: string, data: BillFormData) {
         })
         .select()
         .single();
-
-    flow("A3 createBill DB returned", { bill_number: newBill?.bill_number, bill_date: newBill?.bill_date, error: billError?.message });
 
     if (billError) {
         console.error("Database Error creating bill:", billError.message);
@@ -572,8 +566,6 @@ export async function createBill(tenantId: string, data: BillFormData) {
 }
 
 export async function updateBill(tenantId: string, billId: string, data: BillFormData) {
-    flow("A1 updateBill received", { billId, bill_number: data.bill_number, bill_date: data.bill_date });
-    
     console.log(`\n=== [DEBUG - updateBill] ===`);
     const finalCustomerId = await resolveCustomer(tenantId, data, true);
 
@@ -687,13 +679,6 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     const safeAmountDue = Math.max(0, netBill - effectivePaid - currentDiscount);
     const safeStatus = safeAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : data.status);
 
-    flow("A2 updateBill patching", {
-        billId,
-        oldInDb: oldBill.bill_number,
-        bill_number: safeData.bill_number?.trim() || oldBill.bill_number,
-        bill_date: safeData.bill_date,
-    });
-
     const { data: updatedBill, error: billError } = await supabase
         .from('bills')
         .update({
@@ -724,8 +709,6 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
         .eq('id', billId)
         .select()
         .single();
-
-    flow("A3 updateBill DB returned", { bill_number: updatedBill?.bill_number, bill_date: updatedBill?.bill_date, error: billError?.message });
 
     if (billError) {
         throw new Error(billError.message || "Failed to update bill.");

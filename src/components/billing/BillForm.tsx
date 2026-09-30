@@ -111,42 +111,11 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         handleSubmit,
         watch,
         setValue,
-        reset,
-        getValues,
         formState: { errors, isSubmitting },
     } = useForm<BillFormData>({
         resolver: zodResolver(billSchema) as Resolver<BillFormData>,
         defaultValues: initialFormValues,
     });
-
-    // ---- FLOW DEBUG (F1, F2) : remove this block when finished ----
-    const formId = useRef(Math.random().toString(36).slice(2, 6)).current;
-    useEffect(() => {
-        flow("F1 form mounted", { formId, type });
-        return () => flow("F1 form UNMOUNTED", { formId });
-    }, [formId, type]);
-    useEffect(() => {
-        const sub = watch((v, { name }) => {
-            if (name === "bill_number" || name === "bill_date") flow("F2 typed", { formId, [name]: v[name] });
-        });
-        return () => sub.unsubscribe();
-    }, [watch, formId]);
-    // ---------------------------------------------------------------
-
-    // Re-fill the form ONLY when the stored bill really changed (not on every parent re-render).
-    // const defaultsKey = JSON.stringify(defaultValues ?? {});
-    // useEffect(() => {
-    //     if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
-    //         flow("F3 form reset", {
-    //             formId,
-    //             resetTo: { bill_number: initialFormValues.bill_number, bill_date: initialFormValues.bill_date },
-    //             wasInForm: { bill_number: getValues("bill_number"), bill_date: getValues("bill_date") },
-    //         });
-    //         reset(initialFormValues as BillFormData);
-    //     }
-    //     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // }, [type, defaultsKey]);
-
 
     // useEffect(() => {
     //     if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
@@ -681,12 +650,6 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                     ? `Auto: ${nextBillPreview}`
                                     : "Auto-generated if empty",
                                 onFocus: (e) => {
-                                    flow("F2 focus bill_number", {
-                                        formId,
-                                        inputShows: e.target.value,
-                                        formHolds: getValues("bill_number"),
-                                        inputIsRegistered: (control as any)._fields?.bill_number?._f?.ref === e.target,
-                                    });
                                     if (type === "create" && nextBillPreview && !e.target.value) {
                                         setValue("bill_number", nextBillPreview, {
                                             shouldValidate: true,
