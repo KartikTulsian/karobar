@@ -134,18 +134,18 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
     // ---------------------------------------------------------------
 
     // Re-fill the form ONLY when the stored bill really changed (not on every parent re-render).
-    const defaultsKey = JSON.stringify(defaultValues ?? {});
-    useEffect(() => {
-        if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
-            flow("F3 form reset", {
-                formId,
-                resetTo: { bill_number: initialFormValues.bill_number, bill_date: initialFormValues.bill_date },
-                wasInForm: { bill_number: getValues("bill_number"), bill_date: getValues("bill_date") },
-            });
-            reset(initialFormValues as BillFormData);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [type, defaultsKey]);
+    // const defaultsKey = JSON.stringify(defaultValues ?? {});
+    // useEffect(() => {
+    //     if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
+    //         flow("F3 form reset", {
+    //             formId,
+    //             resetTo: { bill_number: initialFormValues.bill_number, bill_date: initialFormValues.bill_date },
+    //             wasInForm: { bill_number: getValues("bill_number"), bill_date: getValues("bill_date") },
+    //         });
+    //         reset(initialFormValues as BillFormData);
+    //     }
+    //     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // }, [type, defaultsKey]);
 
 
     // useEffect(() => {
