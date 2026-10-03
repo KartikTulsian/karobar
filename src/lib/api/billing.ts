@@ -122,6 +122,24 @@ async function resolveCustomer(tenantId: string, data: BillFormData, isUpdateMod
     return newCustomer.id;
 }
 
+/**
+ * Turns the engine's discrepancy into a message that says what is really wrong.
+ * (Before, every failure said "form total does not match", even when the totals were equal
+ * and the real problem was e.g. a stock/batch quantity mismatch.)
+ */
+function billCheckMessage(d: {
+    message: string; expected_total: number; submitted_total: number; expected_tax: number; submitted_tax: number;
+} | null) {
+    if (!d) return "Bill validation failed. Please review the items and try again.";
+    const totalsDiffer =
+        Math.abs(d.expected_total - d.submitted_total) > 0.02 ||
+        Math.abs(d.expected_tax - d.submitted_tax) > 0.02;
+    if (totalsDiffer) {
+        return `Data sync error: The form total (₹${d.submitted_total}) does not match the server verified total (₹${d.expected_total}). Please refresh the page or review your cart.`;
+    }
+    return d.message || "Bill validation failed. Please review the items and try again.";
+}
+
 async function syncBatchStock(allocations: BatchAllocation[] | undefined | null, multiplier: number, actionName: string) {
     if (!allocations || allocations.length === 0) return;
 
@@ -366,7 +384,7 @@ export async function fetchNextBillNumberPreview(tenantId: string): Promise<stri
         .ilike('bill_number', `${prefix}%`)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
     let nextSeq = 1;
     if (lastBill && lastBill.bill_number) {
@@ -433,11 +451,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
 
         // This throw will be caught by your frontend React Hook Form 
         // or API error boundary to show a toast notification.
-        throw new Error(
-            `Data sync error: The form total (₹${checkResult.discrepancyDetails?.submitted_total}) ` +
-            `does not match the server verified total (₹${checkResult.discrepancyDetails?.expected_total}). ` +
-            `Please refresh the page or review your cart.`
-        );
+        throw new Error(billCheckMessage(checkResult.discrepancyDetails));
     }
 
     // 3. Extract the clean data to continue saving
@@ -460,7 +474,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
             .ilike('bill_number', `${prefix}%`)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         let nextSeq = 1;
         if (lastBill && lastBill.bill_number) {
@@ -475,6 +489,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
         // Example output: INV-2026/07/18-11
         finalBillNumber = `${prefix}${nextSeq}`;
     }
+
 
     const { data: newBill, error: billError } = await supabase
         .from('bills')
@@ -506,6 +521,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
         })
         .select()
         .single();
+
 
     if (billError) {
         console.error("Database Error creating bill:", billError.message);
@@ -644,11 +660,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
 
         // This throw will be caught by your frontend React Hook Form 
         // or API error boundary to show a toast notification.
-        throw new Error(
-            `Data sync error: The form total (₹${checkResult.discrepancyDetails?.submitted_total}) ` +
-            `does not match the server verified total (₹${checkResult.discrepancyDetails?.expected_total}). ` +
-            `Please refresh the page or review your cart.`
-        );
+        throw new Error(billCheckMessage(checkResult.discrepancyDetails));
     }
     const safeData = checkResult.sanitizedData;
 
@@ -678,6 +690,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
 
     const safeAmountDue = Math.max(0, netBill - effectivePaid - currentDiscount);
     const safeStatus = safeAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : data.status);
+
 
     const { data: updatedBill, error: billError } = await supabase
         .from('bills')
@@ -709,6 +722,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
         .eq('id', billId)
         .select()
         .single();
+
 
     if (billError) {
         throw new Error(billError.message || "Failed to update bill.");

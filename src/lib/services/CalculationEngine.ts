@@ -44,9 +44,13 @@ export const CalculationEngine = {
             const discountAmt = baseTotal * (discPct / 100);
             const taxableValue = Number((baseTotal - discountAmt).toFixed(2));
 
+            // Only inventory items (those with an item_id) are stocked in batches and need allocation.
+            // Custom / "flying" items (no item_id) are not in inventory, so there is nothing to allocate.
+            const isTracked = !!item.item_id;
+
             let total_buy_price = 0;
             let allocated_qty = 0;
-            let final_allocations: BatchAllocation[] = item.batch_allocations || [];
+            let final_allocations: BatchAllocation[] = isTracked ? (item.batch_allocations || []) : [];
 
             final_allocations.forEach(alloc => {
                 allocated_qty += Number(alloc.qty);
@@ -77,7 +81,8 @@ export const CalculationEngine = {
             }
 
             // Gatekeeper: Reject transaction if even the DB couldn't fulfill the allocations
-            if (Math.abs(allocated_qty - qty) > 0.001) {
+            // (stock-tracked items only; custom items are allowed without batches)
+            if (isTracked && Math.abs(allocated_qty - qty) > 0.001) {
                 hasAllocationMismatch = true;
                 allocationErrorMessage = `Quantity mismatch on "${item.item_name}". Needed ${qty}, but allocated ${allocated_qty} from batches.`;
             }
