@@ -45,6 +45,7 @@ export default function CustomerForm({ type, defaultValues, isModal = false, onC
             country: data.country?.trim() || "India",
             notes: data.notes?.trim() || null,
             reduce_amount: data.reduce_amount || 0,
+            opening_due_date: data.opening_due_date || undefined,
         } as unknown as CustomerFormData;
 
         await onSubmit(finalData);
@@ -243,6 +244,14 @@ export default function CustomerForm({ type, defaultValues, isModal = false, onC
                                 register={register}
                                 error={errors.outstanding_due}
                                 inputProps={{ min: 0, placeholder: "0.00" }}
+                            />
+
+                            <InputField
+                                label="Due Start Date"
+                                name="opening_due_date"
+                                type="date"
+                                register={register}
+                                error={errors.opening_due_date}
                             />
 
                             <InputField

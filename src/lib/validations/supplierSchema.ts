@@ -33,6 +33,7 @@ export const supplierSchema = z.object({
     payment_terms: z.string().optional(),
 
     outstanding_due: z.number().min(0, "Opening due cannot be negative").default(0).optional(),
+    opening_due_date: z.string().optional(),
     advance_balance: z.number().min(0, "Opening advance cannot be negative").default(0).optional(),
     reduce_amount: z.number().min(0, "Reduce amount cannot be negative").default(0).optional(),
     

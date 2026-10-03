@@ -125,7 +125,7 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
 
-    const { id, outstanding_due, advance_balance, reduce_amount, ...insertData } = data;
+    const { id, outstanding_due, opening_due_date, advance_balance, reduce_amount, ...insertData } = data;
 
     // 1. Create the customer record first (Privacy Gate: user_id remains NULL)
     const { data: customer, error: customerError } = await supabase
@@ -144,11 +144,12 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
     }
 
     if (outstanding_due && outstanding_due > 0) {
+        const billDate = opening_due_date || '2025-01-01';
         const { error: billError } = await supabase.from('bills').insert({
             tenant_id: tenantId,
             customer_id: customer.id,
             bill_number: `OPENING-BAL-${customer.id.substring(0, 8).toUpperCase()}`,
-            bill_date: '2025-01-01', // CRITICAL: Keeps it off current P&L reports
+            bill_date: billDate, // CRITICAL: Keeps it off current P&L reports
             status: 'issued', // Marks it as unpaid
             is_gst_bill: false, // CRITICAL: Keeps it off GST dashboards
             subtotal: outstanding_due,
@@ -239,7 +240,7 @@ export async function updateCustomer(tenantId: string, customerId: string, data:
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
     
-    const { id, reduce_amount, outstanding_due, advance_balance, ...updateData } = data;
+    const { id, reduce_amount, outstanding_due, advance_balance, opening_due_date, ...updateData } = data;
 
     const { data: result, error } = await supabase
         .from('customers')
@@ -345,7 +346,7 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
 
-    const { id, outstanding_due, advance_balance, reduce_amount, ...insertData } = data;
+    const { id, outstanding_due, opening_due_date, advance_balance, reduce_amount, ...insertData } = data;
     
     // 1. Create the customer record first (Privacy Gate: user_id remains NULL)
     const { data: supplier, error: supplierError } = await supabase
@@ -364,11 +365,12 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
     }
 
     if (outstanding_due && outstanding_due > 0) {
+        const poDate = opening_due_date || '2025-01-01';
         const { error: poError } = await supabase.from('purchase_orders').insert({
             tenant_id: tenantId,
             supplier_id: supplier.id,
             po_number: `OPENING-BAL-${supplier.id.substring(0, 8).toUpperCase()}`,
-            order_date: '2025-01-01', // Backdated to hide from current expense reports
+            order_date: poDate, // Backdated to hide from current expense reports
             status: 'received', 
             payment_status: 'unpaid', 
             is_gst_supply: false, 
@@ -431,7 +433,7 @@ export async function updateSupplier(tenantId: string, supplierId: string, data:
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
     
-    const { id, reduce_amount, outstanding_due, advance_balance, ...updateData } = data;
+    const { id, reduce_amount, outstanding_due, advance_balance, opening_due_date, ...updateData } = data;
 
     const { data: result, error } = await supabase
         .from('suppliers')
