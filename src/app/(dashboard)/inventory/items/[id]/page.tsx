@@ -15,6 +15,7 @@ import ActionModal from '@/components/ui/ActionModal';
 import ItemForm from '@/components/inventory/ItemForm';
 import StockAdjustmentForm from '@/components/inventory/StockAdjustmentForm';
 import { useTenantStore } from '@/store/useTenantStore';
+import { formatGuide, getLatestPricing } from '@/lib/api/inventory';
 
 export default function ItemDetailsPage() {
   const params = useParams();
@@ -64,6 +65,11 @@ export default function ItemDetailsPage() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const depletedBatchesCount = (item.batches?.length || 0) - activeBatches.length;
 
+  // Cost / sell price according to the latest received batch
+  const latest = getLatestPricing(item);
+  const canSeeCost = currentRole === "owner" || currentRole === "manager";
+  const defaultGuideText = formatGuide({ min: item.min_sell_price ?? null, max: item.max_sell_price ?? null });
+
   // Map the raw data into the format our generic DetailsTable expects
   const tableData = [
     { label: "Product Name", value: item.name },
@@ -87,7 +93,12 @@ export default function ItemDetailsPage() {
       )
     },
     { label: "Low Stock Threshold", value: item.low_stock_threshold },
+    ...(canSeeCost
+      ? [{ label: "Latest Cost Price", value: latest.hasBatch ? `₹${(latest.cost ?? 0).toFixed(2)}` : 'No stock', valueClassName: "font-bold text-amber-600 dark:text-amber-500" }]
+      : []),
+    { label: "Latest Sell Price", value: `₹${latest.sell.toFixed(2)}`, valueClassName: "font-bold text-emerald-600 dark:text-emerald-500" },
     { label: "Default Sell Price (MRP)", value: `₹${item.default_sell_price.toFixed(2)}`, valueClassName: "font-bold text-slate-900 dark:text-white" },
+    { label: "Default Price Guide (Min – Max)", value: defaultGuideText || 'Not set', valueClassName: "text-slate-600 dark:text-slate-300" },
     { label: "GST Rate", value: item.gst_rate ? `${item.gst_rate}%` : '0%' },
     { label: "Status", value: item.is_active ? 'Active' : 'Inactive', valueClassName: item.is_active ? "text-emerald-600 font-medium" : "text-slate-400 font-medium" },
     { label: "Description", value: item.description || 'No description provided.' },
@@ -160,6 +171,7 @@ export default function ItemDetailsPage() {
                       <th className="px-4 py-3">Batch / PO Ref</th>
                       <th className="px-4 py-3 text-right">Cost Price</th>
                       <th className="px-4 py-3 text-right">Sell Price</th>
+                      <th className="px-4 py-3 text-right">Price Guide</th>
                       <th className="px-4 py-3 text-right">Qty Available</th>
                     </tr>
                   </thead>
@@ -177,6 +189,9 @@ export default function ItemDetailsPage() {
                         </td>
                         <td className="px-4 py-3.5 text-right font-bold text-emerald-600 dark:text-emerald-500">
                           ₹{batch.sell_price.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-xs text-slate-500 dark:text-slate-400">
+                          {formatGuide({ min: batch.min_sell_price ?? null, max: batch.max_sell_price ?? null }) || '-'}
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <span className="inline-flex items-center justify-center min-w-[2rem] rounded-md bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 ring-1 ring-inset ring-indigo-600/20 dark:bg-indigo-500/10 dark:text-indigo-400">

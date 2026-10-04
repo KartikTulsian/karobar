@@ -119,6 +119,8 @@ CREATE TABLE items (
     -- buy_price NUMERIC(12,2),
     -- sell_price NUMERIC(12,2) NOT NULL,
     default_sell_price NUMERIC(12,2) NOT NULL,
+    min_sell_price NUMERIC(12,2),
+    max_sell_price NUMERIC(12,2),
     gst_rate NUMERIC(5,2),
     -- stock_qty INT DEFAULT 0,
     low_stock_threshold INT DEFAULT 10,
@@ -138,6 +140,8 @@ CREATE TABLE item_batches (
     batch_number TEXT, -- E.g., 'PO-2026-012' or 'OPENING-STOCK'
     buy_price NUMERIC(12,2) NOT NULL,
     sell_price NUMERIC(12,2) NOT NULL,
+    min_sell_price NUMERIC(12,2),
+    max_sell_price NUMERIC(12,2),
     stock_qty INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -198,11 +202,15 @@ SELECT
                 'batch_number', b.batch_number,
                 'buy_price', b.buy_price,
                 'sell_price', b.sell_price,
+                'min_sell_price', b.min_sell_price,
+                'max_sell_price', b.max_sell_price,
                 'stock_qty', b.stock_qty,
                 'created_at', b.created_at
             ) ORDER BY b.created_at ASC
         ) FILTER (WHERE b.id IS NOT NULL), '[]'::jsonb
-    ) AS batches
+    ) AS batches,
+    i.min_sell_price,
+    i.max_sell_price
 FROM items i
 LEFT JOIN item_batches b ON i.id = b.item_id
 GROUP BY i.id;

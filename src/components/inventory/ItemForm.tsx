@@ -289,6 +289,36 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                             {errors.default_sell_price && <span className="text-xs text-red-500">{errors.default_sell_price.message}</span>}
                         </div>
 
+                        {/* PRICE GUIDE: reminder only, never used in any calculation. Blank stays blank. */}
+                        <div className="grid grid-cols-2 gap-5 sm:col-span-2">
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Min Sell Price (₹)</label>
+                                <input
+                                    type="number" step="0.01"
+                                    placeholder="Optional"
+                                    {...register("min_sell_price")}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.min_sell_price && <span className="text-xs text-red-500">{errors.min_sell_price.message}</span>}
+                            </div>
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Max Sell Price (₹)</label>
+                                <input
+                                    type="number" step="0.01"
+                                    placeholder="Optional"
+                                    {...register("max_sell_price")}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.max_sell_price && <span className="text-xs text-red-500">{errors.max_sell_price.message}</span>}
+                            </div>
+                            <p className="col-span-2 -mt-3 text-xs text-slate-400">
+                                Guide only: a reminder of the usual selling range. It is never used in bill calculations.
+                                {type === "create" ? " It is also saved on the opening stock batch." : " Changing it here does not change existing stock batches."}
+                            </p>
+                        </div>
+
                         <div className="flex flex-col gap-1 w-full sm:col-span-2">
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">GST Rate (%)</label>
                             <select

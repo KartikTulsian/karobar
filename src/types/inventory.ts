@@ -9,6 +9,8 @@ export interface ItemBatch {
     batch_number: string | null;
     buy_price: number;
     sell_price: number;
+    min_sell_price?: number | null; // price guide for this batch (reminder only)
+    max_sell_price?: number | null;
     stock_qty: number;
     created_at: string;
 }
@@ -22,6 +24,8 @@ export interface InventoryItem {
     unit: string;
     // buy_price: number;
     default_sell_price: number;
+    min_sell_price?: number | null; // price guide (reminder only)
+    max_sell_price?: number | null;
     gst_rate: number | null;
     total_stock_qty: number;
     low_stock_threshold: number;
@@ -32,6 +36,10 @@ export interface InventoryItem {
     brand_id: string | null;
     category_name: string | null;
     brand_name: string | null;
+
+    // Derived in fetchInventoryItems from the latest batch (used by the items table, sortable)
+    latest_buy_price?: number;
+    latest_sell_price?: number;
 
     batches?: ItemBatch[];
 }
@@ -45,6 +53,8 @@ export interface InventoryItemDetail {
     unit: string;
     // buy_price: number;
     default_sell_price: number;
+    min_sell_price?: number | null; // price guide (reminder only)
+    max_sell_price?: number | null;
     gst_rate: number | null;
     total_stock_qty: number;
     low_stock_threshold: number;
@@ -57,6 +67,11 @@ export interface InventoryItemDetail {
     brand_name: string | null;
 
     batches?: ItemBatch[];
+}
+
+export interface PriceGuide {
+    min: number | null;
+    max: number | null;
 }
 
 export interface Category {

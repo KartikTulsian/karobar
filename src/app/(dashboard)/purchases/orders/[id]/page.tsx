@@ -66,6 +66,8 @@ const mapPOToFormData = (po: PurchaseOrderDetail | null): Partial<PurchaseOrderF
             qty_received: item.qty_received,
             unit_cost: item.unit_cost,
             batch_sell_price: item.batch_sell_price || item.unit_cost || 0,
+            batch_min_sell_price: item.batch_min_sell_price ?? null,
+            batch_max_sell_price: item.batch_max_sell_price ?? null,
             discount_pct: item.discount_pct,
             gst_rate: item.gst_rate,
             cgst: item.cgst,
@@ -101,18 +103,15 @@ export default function PurchaseOrderDetailsPage() {
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState<"update" | "delete" | "payment">("update");
+    const [formSession, setFormSession] = useState(0); // bumped on every "Edit" click -> fresh form
 
-    const [formSession, setFormSession] = useState(0);
-
+    // Same object until the PO itself changes (a new object every render is what caused resets)
     const formDefaults = useMemo(() => mapPOToFormData(po ?? null), [po]);
 
     // Handlers
     const handleUpdateSubmit = async (data: PurchaseOrderFormData) => {
         try {
-            await updatePO({
-                poId,
-                data
-            });
+            await updatePO({ poId, data });
             toast.success("Purchase Order updated successfully!");
             setIsModalOpen(false);
         } catch (error) {

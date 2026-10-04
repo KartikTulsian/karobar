@@ -3,7 +3,7 @@
 import { BillFormData, billSchema } from '@/lib/validations/billSchema';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FileMinus, FileText, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Path, Resolver, useFieldArray, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import { useCustomers } from '@/hooks/usePeople';
@@ -13,7 +13,7 @@ import { toast } from 'react-toastify';
 import { useNavigation } from '@/hooks/useNavigation';
 import { BatchAllocation } from '@/types/billing';
 import { getLocalDateString } from '@/lib/utils';
-import { flow } from '@/lib/debug';
+import { formatGuide, getBillPriceGuide } from '@/lib/api/inventory';
 
 interface BillFormProps {
     type: "create" | "update";
@@ -805,6 +805,16 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                 const effectivePrice = Number((price * (1 - discPct / 100)).toFixed(2));
                                 const cost = Number(watchLineItems[index]?.total_buy_price || 0);
 
+                                // PRICE GUIDE (reminder only): shown + soft warnings, never blocks or changes any calculation
+                                const priceGuide = selectedInventoryItem
+                                    ? getBillPriceGuide(
+                                        selectedInventoryItem,
+                                        (watchLineItems[index]?.batch_allocations || []).map((a: BatchAllocation) => a.batch_id)
+                                    )
+                                    : null;
+                                const belowGuideMin = !!priceGuide && priceGuide.min !== null && price > 0 && effectivePrice < priceGuide.min;
+                                const aboveGuideMax = !!priceGuide && priceGuide.max !== null && price > 0 && effectivePrice > priceGuide.max;
+
                                 let marginStatus = "safe";
                                 if (effectivePrice < cost) marginStatus = "loss";
                                 else if (effectivePrice - cost <= 10) marginStatus = "low";
@@ -1084,6 +1094,13 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                 onWheel={preventScrollChange}
                                                 className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-indigo-500"
                                             />
+                                            {priceGuide && (
+                                                <div className="mt-1 flex flex-col gap-0.5 text-[10px] leading-tight" title="Price guide (reminder only)">
+                                                    <span className="text-slate-400">Guide {formatGuide(priceGuide)}</span>
+                                                    {belowGuideMin && <span className="font-bold text-amber-600">Below min ₹{priceGuide.min}</span>}
+                                                    {aboveGuideMax && <span className="font-bold text-amber-600">Above max ₹{priceGuide.max}</span>}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-2 py-2 align-top">
                                             <input

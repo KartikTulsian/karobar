@@ -59,6 +59,8 @@ export interface POLineItem {
     unit_cost: number; // This becomes the Batch's buy_price
 
     batch_sell_price: number;
+    batch_min_sell_price?: number | null; // price guide copied onto the received batch (reminder only)
+    batch_max_sell_price?: number | null;
 
     discount_pct: number;
     gst_rate: number;

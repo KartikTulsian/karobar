@@ -121,13 +121,17 @@ export async function removeFromPurchaseList(tenantId: string, itemIds: string[]
 // ==========================================
 
 // 1. PO BATCH SYNC: Dynamically Generates or Updates Batches based on PO Lines
+// Price guide values are optional reminders: blank / missing -> null (never 0, never NaN)
+const toGuide = (v: unknown): number | null =>
+    v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v);
+
 async function syncPOBatches(
     tenantId: string,
     poId: string,
     poNumber: string,
     orderDate: string | undefined,
     oldItems: Pick<POLineItemFormData, "item_id" | "qty_received">[],
-    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price" | "discount_pct" | "gst_rate">[]
+    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price" | "batch_min_sell_price" | "batch_max_sell_price" | "discount_pct" | "gst_rate">[]
 ) {
     // Fetch all batches currently tied to this Purchase Order
     const { data: existingBatches } = await supabase.from('item_batches').select('*').eq('po_id', poId);
@@ -149,6 +153,8 @@ async function syncPOBatches(
     const newQtyMap: Record<string, number> = {};
     const newCostTotalsMap: Record<string, number> = {};
     const newSellMap: Record<string, number> = {};
+    const newMinMap: Record<string, number | null> = {};
+    const newMaxMap: Record<string, number | null> = {};
 
     newItems.forEach(i => {
         const receivedQty = Number(i.qty_received) || 0;
@@ -162,6 +168,8 @@ async function syncPOBatches(
             newQtyMap[i.item_id] = (newQtyMap[i.item_id] || 0) + receivedQty;
             newCostTotalsMap[i.item_id] = (newCostTotalsMap[i.item_id] || 0) + inventoryUnitCost * receivedQty;
             newSellMap[i.item_id] = Number(i.batch_sell_price) || Number(i.unit_cost) || 0;
+            newMinMap[i.item_id] = toGuide(i.batch_min_sell_price);
+            newMaxMap[i.item_id] = toGuide(i.batch_max_sell_price);
         }
     });
 
@@ -192,6 +200,8 @@ async function syncPOBatches(
                 stock_qty: newStockQty,
                 buy_price: newCostMap[itemId] !== undefined ? newCostMap[itemId] : batch.buy_price,
                 sell_price: newSellMap[itemId] !== undefined ? newSellMap[itemId] : batch.sell_price,
+                min_sell_price: newMinMap[itemId] !== undefined ? newMinMap[itemId] : batch.min_sell_price,
+                max_sell_price: newMaxMap[itemId] !== undefined ? newMaxMap[itemId] : batch.max_sell_price,
                 ...(createdAtIso ? { created_at: createdAtIso } : {})
             }).eq('id', batch.id);
 
@@ -204,6 +214,8 @@ async function syncPOBatches(
                 batch_number: poNumber,
                 buy_price: newCostMap[itemId],
                 sell_price: newSellMap[itemId],
+                min_sell_price: newMinMap[itemId] ?? null,
+                max_sell_price: newMaxMap[itemId] ?? null,
                 stock_qty: newQty,
                 ...(createdAtIso ? { created_at: createdAtIso } : {})
             });
@@ -519,7 +531,7 @@ export async function createPurchaseOrder(tenantId: string, data: PurchaseOrderF
             .ilike('po_number', `${prefix}%`)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         let nextSeq = 1;
         if (lastPO && lastPO.po_number) {
@@ -645,6 +657,9 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     // // Step B: Update Parent PO
     const currentPaid = Number(oldPO.amount_paid || 0);
     const currentDiscount = Number(oldPO.settlement_discount || 0);
+    // Due = verified total - what was already paid - settlement discount.
+    // (safeData.amount_due already had the form's amount_paid taken off, so using it here subtracted the paid amount twice.)
+    // A PO with a return attached can't be edited (checked above), so no returns need to be netted off here.
     const finalAmountDue = Math.max(0, safeData.total_amount - currentPaid - currentDiscount);
     const safePaymentStatus = finalAmountDue <= 0 ? 'paid' : (currentPaid > 0 || currentDiscount > 0 ? 'partial' : safeData.payment_status);
 

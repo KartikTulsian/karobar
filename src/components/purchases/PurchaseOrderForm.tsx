@@ -29,6 +29,8 @@ const DEFAULT_LINE_ITEM = {
     qty_received: 0,
     unit_cost: 0,
     batch_sell_price:0,
+    batch_min_sell_price: null,
+    batch_max_sell_price: null,
     discount_pct: 0,
     gst_rate: 0,
     cgst: 0,
@@ -86,6 +88,8 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                 ...DEFAULT_LINE_ITEM,
                 ...item,
                 batch_sell_price: Number(item.batch_sell_price) || 0, 
+                batch_min_sell_price: item.batch_min_sell_price != null ? Number(item.batch_min_sell_price) : null,
+                batch_max_sell_price: item.batch_max_sell_price != null ? Number(item.batch_max_sell_price) : null,
                 unit_cost: Number(item.unit_cost) || 0,
                 discount_pct: Number(item.discount_pct) || 0,
                 gst_rate: Number(item.gst_rate) || 0,
@@ -107,11 +111,9 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         defaultValues: initialFormValues,
     });
 
-    // useEffect(() => {
-    //     if (type === "update" && defaultValues && Object.keys(defaultValues).length > 0) {
-    //         reset(initialFormValues as PurchaseOrderFormData);
-    //     }
-    // }, [initialFormValues, reset, type, defaultValues]);
+    // Do NOT call reset() after mount: it wipes react-hook-form's field registry, and typed changes
+    // to po_number / order_date stop reaching the form. useForm({ defaultValues }) already loads the
+    // PO, and the details page gives every "Edit" click a fresh form (key).
 
     const { fields, append, remove } = useFieldArray({
         control,
@@ -178,6 +180,9 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
 
         setValue(`po_line_items.${index}.unit_cost`, latestBuyPrice, { shouldValidate: true });
         setValue(`po_line_items.${index}.batch_sell_price`, invItem.default_sell_price || 0, { shouldValidate: true });
+        // price guide (reminder only): start from the item's guide, editable for this batch
+        setValue(`po_line_items.${index}.batch_min_sell_price`, invItem.min_sell_price ?? null);
+        setValue(`po_line_items.${index}.batch_max_sell_price`, invItem.max_sell_price ?? null);
 
         setValue(`po_line_items.${index}.hsn_code`, invItem.hsn_code || "");
 
@@ -492,7 +497,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                 <th className="px-4 py-3 font-medium w-40">Ordered Qty & Unit</th>
                                 <th className="px-4 py-3 font-medium w-24 text-indigo-600">Received</th>
                                 <th className="px-4 py-3 font-medium w-32">Unit Cost (Buy) (₹)</th>
-                                <th className="px-4 py-3 font-medium w-32 text-emerald-600">Target Sell Price</th>
+                                <th className="px-4 py-3 font-medium w-40 text-emerald-600">Target Sell Price <span className="block text-[10px] font-normal text-slate-400">min / max guide (optional)</span></th>
                                 <th className="px-4 py-3 font-medium w-24">Disc %</th>
                                 {watchIsGstSupply && <th className="px-4 py-3 font-medium w-24">GST %</th>}
                                 <th className="px-4 py-3 font-medium text-right w-32">Total (₹)</th>
@@ -688,6 +693,26 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                 {(watchItems[index]?.batch_sell_price || 0) < (watchItems[index]?.unit_cost || 0) && (
                                                     <span className="text-[9px] font-bold text-red-500 leading-none">
                                                         ⚠️ Selling below cost
+                                                    </span>
+                                                )}
+                                                {/* PRICE GUIDE: reminder only, never used in any calculation. Blank stays blank. */}
+                                                <div className="grid grid-cols-2 gap-1">
+                                                    <input
+                                                        type="number" step="0.01" placeholder="Min"
+                                                        {...register(`po_line_items.${index}.batch_min_sell_price`)}
+                                                        onWheel={(e) => e.currentTarget.blur()}
+                                                        className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                                    />
+                                                    <input
+                                                        type="number" step="0.01" placeholder="Max"
+                                                        {...register(`po_line_items.${index}.batch_max_sell_price`)}
+                                                        onWheel={(e) => e.currentTarget.blur()}
+                                                        className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                                    />
+                                                </div>
+                                                {errors.po_line_items?.[index]?.batch_max_sell_price && (
+                                                    <span className="text-[9px] font-bold text-red-500 leading-none">
+                                                        {errors.po_line_items?.[index]?.batch_max_sell_price?.message}
                                                     </span>
                                                 )}
                                             </div>

@@ -1,5 +1,10 @@
 import z from "zod";
 
+const guidePrice = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.coerce.number().min(0, "Cannot be negative").nullable().optional()
+);
+
 export const poLineItemSchema = z.object({
   id: z.string().optional(), 
   item_id: z.string().nullable().optional(), 
@@ -11,6 +16,8 @@ export const poLineItemSchema = z.object({
   qty_received: z.coerce.number().default(0),
   unit_cost: z.coerce.number().min(0, "Cost cannot be negative"),
   batch_sell_price: z.coerce.number().min(0, "Sell price cannot be negative").default(0),
+  batch_min_sell_price: guidePrice,
+  batch_max_sell_price: guidePrice,
   
   discount_pct: z.coerce.number().min(0).max(100).default(0),
   gst_rate: z.coerce.number().min(0).default(0),
@@ -21,7 +28,10 @@ export const poLineItemSchema = z.object({
   igst: z.coerce.number().default(0),
   line_total: z.coerce.number().default(0),
   sort_order: z.coerce.number().int().default(0),
-});
+}).refine(
+  (d) => d.batch_min_sell_price == null || d.batch_max_sell_price == null || d.batch_max_sell_price >= d.batch_min_sell_price,
+  { message: "Max price cannot be less than min price", path: ["batch_max_sell_price"] }
+);
 
 export type POLineItemFormData = z.infer<typeof poLineItemSchema>;
 

@@ -85,6 +85,9 @@ CREATE TABLE po_line_items (
     qty_received NUMERIC(12,3) DEFAULT 0,
     unit_cost NUMERIC(12,2) NOT NULL,
     batch_sell_price NUMERIC(12,2) DEFAULT 0,
+
+    batch_min_sell_price NUMERIC(12,2),
+    batch_max_sell_price NUMERIC(12,2),
     
     -- Taxes & Discounts
     discount_pct NUMERIC(5,2) DEFAULT 0,

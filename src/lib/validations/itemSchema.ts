@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const guidePrice = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.coerce.number().min(0, "Cannot be negative").nullable().optional()
+);
+
 export const itemSchema = z.object({
     id: z.string().optional(), // Optional during creation
     name: z.string().min(2, "Product name must be at least 2 characters"),
@@ -16,6 +21,8 @@ export const itemSchema = z.object({
     // Pricing
     buy_price: z.coerce.number().min(0, "Cannot be negative").optional(), // Used ONLY for Opening Stock batch
     default_sell_price: z.coerce.number().min(0.01, "Sell price is required"), // NOT NULL in DB
+    min_sell_price: guidePrice,
+    max_sell_price: guidePrice,
     gst_rate: z.coerce.number().nullable().optional(),
 
     // Inventory
@@ -26,6 +33,9 @@ export const itemSchema = z.object({
     // Details
     description: z.string().nullable().optional(),
     images: z.array(z.string()).default([]), // Maps to TEXT[] in DB
-});
+}).refine(
+    (d) => d.min_sell_price == null || d.max_sell_price == null || d.max_sell_price >= d.min_sell_price,
+    { message: "Max price cannot be less than min price", path: ["max_sell_price"] }
+);
 
 export type ItemFormData = z.infer<typeof itemSchema>;
