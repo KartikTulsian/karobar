@@ -10,6 +10,7 @@ import { Resolver, useFieldArray, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import { FileMinus, FileText, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { getLocalDateString } from '@/lib/utils';
+import { focusCell, formKeyDown, gridKeyDown, listKeyDown, resolveHighlight, useGridFocus } from '@/lib/helpers/keyboardNav';
 
 interface PurchaseOrderFormProps {
     type: "create" | "update";
@@ -28,7 +29,7 @@ const DEFAULT_LINE_ITEM = {
     qty_ordered: 1,
     qty_received: 0,
     unit_cost: 0,
-    batch_sell_price:0,
+    batch_sell_price: 0,
     batch_min_sell_price: null,
     batch_max_sell_price: null,
     discount_pct: 0,
@@ -46,6 +47,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
     const { data: inventory = [], isLoading: loadingInventory } = useInventory(tenantId);
 
     const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
+    const [navIndex, setNavIndex] = useState(0); // keyboard highlight inside the open item suggestion list
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     // 1. Calculate safe initial values exactly ONCE when the form mounts
@@ -87,7 +89,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
             po_line_items: defaultValues.po_line_items?.map((item, index) => ({
                 ...DEFAULT_LINE_ITEM,
                 ...item,
-                batch_sell_price: Number(item.batch_sell_price) || 0, 
+                batch_sell_price: Number(item.batch_sell_price) || 0,
                 batch_min_sell_price: item.batch_min_sell_price != null ? Number(item.batch_min_sell_price) : null,
                 batch_max_sell_price: item.batch_max_sell_price != null ? Number(item.batch_max_sell_price) : null,
                 unit_cost: Number(item.unit_cost) || 0,
@@ -122,6 +124,18 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
 
     const watchItems = watch("po_line_items");
     const watchIsGstSupply = watch("is_gst_supply");
+
+    // Keyboard: Excel-like line-item grid (Enter walks past the optional Min / Max guide boxes; Tab still reaches them)
+    const { gridRef, focusLater } = useGridFocus(fields.length);
+    const gridCols = ["item", "qty", "received", "cost", "sell", "min", "max", "disc", ...(watchIsGstSupply ? ["gst"] : [])];
+    const addRow = () => {
+        focusLater(fields.length, "item");
+        append({ ...DEFAULT_LINE_ITEM, sort_order: fields.length });
+    };
+    // Enter in the very last cell adds a row only when the last row is filled (no runaway blank rows)
+    const addRowFromKeyboard = () => {
+        if (watchItems?.[fields.length - 1]?.item_name?.trim()) addRow();
+    };
     const watchIsInterstate = watch("is_interstate");
     const watchDiscount = watch("discount_amount") || 0;
     const watchRoundOff = Number(watch("round_off")) || 0;
@@ -170,10 +184,10 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
     const handleSelectItem = (invItem: InventoryItem, index: number) => {
         setValue(`po_line_items.${index}.item_id`, invItem.id);
         setValue(`po_line_items.${index}.item_name`, invItem.name, { shouldValidate: true });
-        
+
         const batches = invItem.batches || [];
         // Sort by created_at descending to put the newest batch at index 0
-        const sortedBatches = [...batches].sort((a, b) => 
+        const sortedBatches = [...batches].sort((a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         const latestBuyPrice = sortedBatches.length > 0 ? sortedBatches[0].buy_price : 0;
@@ -195,6 +209,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         setValue(`po_line_items.${index}.gst_rate`, watchIsGstSupply ? (invItem.gst_rate || 0) : 0);
         setValue(`po_line_items.${index}.qty_ordered`, 1, { shouldValidate: true });
         setActiveDropdown(null);
+        focusCell(gridRef.current, index, "qty");
     };
 
     const calculateTools = () => {
@@ -338,14 +353,9 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         : "flex flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900";
 
     return (
-        <form 
-            onSubmit={handleSubmit(handleFormSubmit)} 
-            onKeyDown={(e) => {
-                // Prevent form submission on Enter, unless typing in a textarea (like notes)
-                if (e.key === 'Enter' && e.target instanceof HTMLElement && e.target.tagName !== 'TEXTAREA') {
-                    e.preventDefault();
-                }
-            }}
+        <form
+            onSubmit={handleSubmit(handleFormSubmit)}
+            onKeyDown={formKeyDown} // Ctrl+Enter saves, Enter moves to the next field (never submits by accident)
             className={containerClass}
         >
             <input type="hidden" {...register("is_gst_supply")} />
@@ -372,24 +382,24 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                             {errors.supplier_id && <p className="text-xs text-red-500">{errors.supplier_id.message}</p>}
                         </div>
 
-                        <InputField 
-                            label="PO Number" 
-                            register={register} 
-                            name="po_number" 
-                            error={errors.po_number} 
-                            inputProps={{ 
-                                placeholder: type === "create" && nextPoPreview 
-                                    ? `Auto: ${nextPoPreview}` 
+                        <InputField
+                            label="PO Number"
+                            register={register}
+                            name="po_number"
+                            error={errors.po_number}
+                            inputProps={{
+                                placeholder: type === "create" && nextPoPreview
+                                    ? `Auto: ${nextPoPreview}`
                                     : "Auto-generated if empty",
                                 onFocus: (e) => {
                                     if (type === "create" && nextPoPreview && !e.target.value) {
-                                        setValue("po_number", nextPoPreview, { 
-                                            shouldValidate: true, 
-                                            shouldDirty: true 
+                                        setValue("po_number", nextPoPreview, {
+                                            shouldValidate: true,
+                                            shouldDirty: true
                                         });
                                     }
                                 }
-                            }} 
+                            }}
                         />
                         <InputField label="Order Date *" type="date" register={register} name="order_date" error={errors.order_date} />
                         <InputField label="Expected Date" type="date" register={register} name="expected_date" error={errors.expected_date} />
@@ -489,7 +499,11 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                     </ul>
                 </div>
 
-                <div className="w-full overflow-visible rounded-lg border border-slate-200 dark:border-slate-700">
+                <div
+                    ref={gridRef}
+                    onKeyDown={(e) => gridKeyDown(e, { cols: gridCols, skipOnEnter: ["min", "max"], rowCount: fields.length, addRow: addRowFromKeyboard })}
+                    className="w-full overflow-visible rounded-lg border border-slate-200 dark:border-slate-700"
+                >
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             <tr>
@@ -527,8 +541,8 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                     .filter(Boolean);
 
                                 const filteredItems = inventory
-                                    .filter(i => 
-                                        i.name.toLowerCase().includes(searchLower) || 
+                                    .filter(i =>
+                                        i.name.toLowerCase().includes(searchLower) ||
                                         (i.sku && i.sku.toLowerCase().includes(searchLower))
                                     )
                                     .sort((a, b) => {
@@ -545,6 +559,9 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                         return 0;
                                     });
 
+                                // Keyboard highlight: items already on this PO cannot be chosen, so they are skipped
+                                const itemHl = resolveHighlight(navIndex, filteredItems.length, (i) => alreadySelectedIds.includes(filteredItems[i].id));
+
                                 return (
                                     <tr key={field.id} className="bg-white dark:bg-slate-900">
                                         <td className="px-2 py-2 relative">
@@ -554,33 +571,47 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                 {...restRegister}
                                                 autoComplete="off"
                                                 placeholder="Search item..."
-                                                onFocus={() => setActiveDropdown(index)}
+                                                data-grid-row={index}
+                                                data-grid-col="item"
+                                                onKeyDown={(e) => listKeyDown(e, {
+                                                    open: activeDropdown === index && currentSearchValue.length > 0,
+                                                    count: filteredItems.length,
+                                                    raw: navIndex,
+                                                    setRaw: setNavIndex,
+                                                    isDisabled: (i) => alreadySelectedIds.includes(filteredItems[i].id),
+                                                    onSelect: (i) => handleSelectItem(filteredItems[i], index),
+                                                    onClose: () => setActiveDropdown(null),
+                                                })}
+                                                onFocus={() => { setActiveDropdown(index); setNavIndex(0); }}
                                                 onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                                                 onChange={(e) => {
                                                     onChange(e);
                                                     setValue(`po_line_items.${index}.item_id`, null);
                                                     setActiveDropdown(index);
+                                                    setNavIndex(0);
                                                 }}
                                                 className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:border-indigo-500"
                                             />
 
                                             {activeDropdown === index && currentSearchValue.length > 0 && (
                                                 <ul className="absolute top-[45px] left-2 z-50 max-h-48 w-[250px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800">
-                                                    {filteredItems.map(item => {
+                                                    {filteredItems.map((item, i) => {
                                                         const isAlreadySelected = alreadySelectedIds.includes(item.id);
 
-                                                        const sortedBatches = [...(item.batches || [])].sort((a, b) => 
+                                                        const sortedBatches = [...(item.batches || [])].sort((a, b) =>
                                                             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
                                                         );
                                                         const displayBuyPrice = sortedBatches.length > 0 ? sortedBatches[0].buy_price : 0;
                                                         return (
                                                             <li
                                                                 key={item.id}
+                                                                ref={(el) => { if (el && i === itemHl) el.scrollIntoView({ block: "nearest" }); }}
+                                                                onMouseEnter={() => { if (!isAlreadySelected) setNavIndex(i); }}
                                                                 onMouseDown={(e) => {
                                                                     e.preventDefault();
                                                                     if (!isAlreadySelected) handleSelectItem(item, index);
                                                                 }}
-                                                                className={`px-3 py-2 text-sm border-b border-slate-100 dark:border-slate-700 last:border-0 ${isAlreadySelected ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700'}`}
+                                                                className={`px-3 py-2 text-sm border-b border-slate-100 dark:border-slate-700 last:border-0 ${isAlreadySelected ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700'} ${i === itemHl ? 'bg-indigo-50 dark:bg-slate-700' : ''}`}
                                                             >
                                                                 <div className="font-medium text-slate-800 dark:text-slate-200">
                                                                     {item.name}
@@ -607,6 +638,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                 <div className="flex">
                                                     <input
                                                         type="number" step="0.001"
+                                                        data-grid-row={index} data-grid-col="qty"
                                                         {...qtyReg}
                                                         onFocus={(e) => handleFocusClear(e, '1')}
                                                         onBlur={(e) => handleBlurRestore(e, `po_line_items.${index}.qty_ordered`, 1, qtyReg.onBlur)}
@@ -635,6 +667,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                             <div className="flex flex-col gap-1 w-full">
                                                 <input
                                                     type="number" step="0.001"
+                                                    data-grid-row={index} data-grid-col="received"
                                                     {...qtyReceivedReg}
                                                     onChange={(e) => {
                                                         const val = parseFloat(e.target.value);
@@ -647,11 +680,10 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                     onFocus={(e) => handleFocusClear(e, '0')}
                                                     onBlur={(e) => handleBlurRestore(e, `po_line_items.${index}.qty_received`, 0, qtyReceivedReg.onBlur)}
                                                     onWheel={(e) => e.currentTarget.blur()}
-                                                    className={`w-full rounded border px-2 py-1.5 text-sm font-medium outline-none focus:border-indigo-600 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 ${
-                                                        isOverReceived 
-                                                        ? 'border-red-400 bg-red-50 text-red-600 dark:border-red-500/50 dark:bg-red-500/10' 
-                                                        : 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                                                    }`}
+                                                    className={`w-full rounded border px-2 py-1.5 text-sm font-medium outline-none focus:border-indigo-600 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 ${isOverReceived
+                                                            ? 'border-red-400 bg-red-50 text-red-600 dark:border-red-500/50 dark:bg-red-500/10'
+                                                            : 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                                        }`}
                                                 />
                                                 {/* INLINE ERROR RENDER */}
                                                 {isOverReceived && (
@@ -664,6 +696,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                         <td className="px-2 py-2">
                                             <input
                                                 type="number" step="0.01"
+                                                data-grid-row={index} data-grid-col="cost"
                                                 {...priceReg}
                                                 onFocus={(e) => handleFocusClear(e, '0')}
                                                 onBlur={(e) => handleBlurRestore(e, `po_line_items.${index}.unit_cost`, 0, priceReg.onBlur)}
@@ -676,6 +709,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                             <div className="flex flex-col gap-1 w-full">
                                                 <input
                                                     type="number" step="0.01"
+                                                    data-grid-row={index} data-grid-col="sell"
                                                     {...register(`po_line_items.${index}.batch_sell_price`, { valueAsNumber: true })}
                                                     onFocus={(e) => handleFocusClear(e, '0')}
                                                     onBlur={(e) => {
@@ -683,11 +717,10 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                         handleBlurRestore(e, `po_line_items.${index}.batch_sell_price`, 0, rhfBlur);
                                                     }}
                                                     onWheel={(e) => e.currentTarget.blur()}
-                                                    className={`w-full rounded border px-2 py-1.5 text-sm outline-none focus:border-indigo-500 transition-colors ${
-                                                        (watchItems[index]?.batch_sell_price || 0) < (watchItems[index]?.unit_cost || 0) 
-                                                        ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300' 
-                                                        : 'border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white'
-                                                    }`}
+                                                    className={`w-full rounded border px-2 py-1.5 text-sm outline-none focus:border-indigo-500 transition-colors ${(watchItems[index]?.batch_sell_price || 0) < (watchItems[index]?.unit_cost || 0)
+                                                            ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300'
+                                                            : 'border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white'
+                                                        }`}
                                                 />
                                                 {/* INLINE WARNING RENDER */}
                                                 {(watchItems[index]?.batch_sell_price || 0) < (watchItems[index]?.unit_cost || 0) && (
@@ -699,12 +732,14 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                 <div className="grid grid-cols-2 gap-1">
                                                     <input
                                                         type="number" step="0.01" placeholder="Min"
+                                                        data-grid-row={index} data-grid-col="min"
                                                         {...register(`po_line_items.${index}.batch_min_sell_price`)}
                                                         onWheel={(e) => e.currentTarget.blur()}
                                                         className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                                                     />
                                                     <input
                                                         type="number" step="0.01" placeholder="Max"
+                                                        data-grid-row={index} data-grid-col="max"
                                                         {...register(`po_line_items.${index}.batch_max_sell_price`)}
                                                         onWheel={(e) => e.currentTarget.blur()}
                                                         className="w-full rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
@@ -721,6 +756,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                         <td className="px-2 py-2">
                                             <input
                                                 type="number" step="0.01"
+                                                data-grid-row={index} data-grid-col="disc"
                                                 {...discReg}
                                                 onFocus={(e) => handleFocusClear(e, '0')}
                                                 onBlur={(e) => handleBlurRestore(e, `po_line_items.${index}.discount_pct`, 0, discReg.onBlur)}
@@ -733,6 +769,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                             <td className="px-2 py-2">
                                                 <input
                                                     type="number" step="0.01"
+                                                    data-grid-row={index} data-grid-col="gst"
                                                     {...gstReg}
                                                     onFocus={(e) => handleFocusClear(e, '0')}
                                                     onBlur={(e) => handleBlurRestore(e, `po_line_items.${index}.gst_rate`, 0, gstReg.onBlur)}
@@ -763,7 +800,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
 
                 <button
                     type="button"
-                    onClick={() => append({ ...DEFAULT_LINE_ITEM, sort_order: fields.length })}
+                    onClick={addRow}
                     className="inline-flex w-fit items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 mt-2"
                 >
                     <Plus className="h-4 w-4" /> Add Item Row
@@ -898,7 +935,10 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                 </button>
                 <button type="submit" disabled={isSubmitting} className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70 transition-colors">
                     <FileText className="h-4 w-4" />
-                    {isSubmitting ? "Processing..." : type === "create" ? "Save Purchase Order" : "Update Purchase Order"}
+                    <span className="flex items-center gap-1.5">
+                        {isSubmitting ? "Processing..." : type === "create" ? "Save Purchase Order" : "Update Purchase Order"}
+                        <span className="text-[10px] opacity-75 font-normal tracking-wide hidden sm:inline-block">(Ctrl + Enter)</span>
+                    </span>
                 </button>
             </div>
         </form>

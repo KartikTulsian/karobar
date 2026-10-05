@@ -5,7 +5,7 @@ import { InventoryItem } from '@/types/inventory'
 import { AlertCircle, Edit, ListPlus, Trash2 } from 'lucide-react';
 import Table from '../common/Table';
 import { useRouter } from 'next/navigation';
-import { formatGuide, getLatestPricing } from '@/lib/api/inventory';
+import { formatGuide, getLatestPricing } from '@/lib/helpers/inventoryPricing';
 
 interface ItemsTableProps {
     data: InventoryItem[];

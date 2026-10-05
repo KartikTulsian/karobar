@@ -15,7 +15,7 @@ import ActionModal from '@/components/ui/ActionModal';
 import ItemForm from '@/components/inventory/ItemForm';
 import StockAdjustmentForm from '@/components/inventory/StockAdjustmentForm';
 import { useTenantStore } from '@/store/useTenantStore';
-import { formatGuide, getLatestPricing } from '@/lib/api/inventory';
+import { formatGuide, getLatestPricing } from '@/lib/helpers/inventoryPricing';
 
 export default function ItemDetailsPage() {
   const params = useParams();

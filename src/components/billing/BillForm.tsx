@@ -8,12 +8,13 @@ import { Path, Resolver, useFieldArray, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import { useCustomers } from '@/hooks/usePeople';
 import { useInventory } from '@/hooks/useInventory';
+import { formatGuide, getBillPriceGuide } from '@/lib/helpers/inventoryPricing';
+import { focusCell, focusNextField, formKeyDown, gridKeyDown, listKeyDown, resolveHighlight, useGridFocus } from '@/lib/helpers/keyboardNav';
 import { InventoryItem, ItemBatch } from '@/types/inventory';
 import { toast } from 'react-toastify';
 import { useNavigation } from '@/hooks/useNavigation';
 import { BatchAllocation } from '@/types/billing';
 import { getLocalDateString } from '@/lib/utils';
-import { formatGuide, getBillPriceGuide } from '@/lib/api/inventory';
 
 interface BillFormProps {
     type: "create" | "update";
@@ -53,6 +54,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
     const [activeItemDropdown, setActiveItemDropdown] = useState<number | null>(null);
     const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
     const [customerSearch, setCustomerSearch] = useState("");
+    const [navIndex, setNavIndex] = useState(0); // keyboard highlight inside whichever suggestion list is open
     const [activeBatchAllocator, setActiveBatchAllocator] = useState<number | null>(null);
     const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -142,6 +144,18 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
     //3.watch form values for real-time math calculations
     const watchLineItems = watch("bill_line_items");
     const watchIsGst = watch("is_gst_bill");
+
+    // Keyboard: Excel-like line-item grid
+    const { gridRef, focusLater } = useGridFocus(fields.length);
+    const gridCols = ["item", "qty", "price", "disc", ...(watchIsGst ? ["gst"] : [])];
+    const addRow = () => {
+        focusLater(fields.length, "item");
+        append({ ...DEFAULT_LINE_ITEM, sort_order: fields.length });
+    };
+    // Enter in the very last cell adds a row only when the last row is filled (no runaway blank rows)
+    const addRowFromKeyboard = () => {
+        if (watchLineItems?.[fields.length - 1]?.item_name?.trim()) addRow();
+    };
     const watchIsInterstate = watch("is_interstate");
     const watchAmountPaid = Number(watch("amount_paid")) || 0;
     const watchGlobalDiscount = Number(watch("discount_amount")) || 0;
@@ -241,6 +255,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         setValue(`bill_line_items.${index}.qty`, 1, { shouldValidate: true, shouldDirty: true });
 
         setActiveItemDropdown(null); // Close dropdown
+        focusCell(gridRef.current, index, "qty");
     };
 
     const handleQtyChange = (index: number, newQty: number, selectedInventoryItem: InventoryItem | undefined) => {
@@ -480,15 +495,17 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         c.name.toLowerCase().includes(customerSearch.toLowerCase())
     );
 
+    const pickCustomer = (c: (typeof filteredCustomers)[number]) => {
+        setValue("customer_id", c.id, { shouldValidate: true });
+        setCustomerSearch(c.name);
+        setIsCustomerDropdownOpen(false);
+    };
+    const customerHl = resolveHighlight(navIndex, filteredCustomers.length);
+
     return (
         <form
             onSubmit={handleSubmit(handleFormSubmit)}
-            onKeyDown={(e) => {
-                // Prevent form submission on Enter, unless typing in a textarea (like notes)
-                if (e.key === 'Enter' && e.target instanceof HTMLElement && e.target.tagName !== 'TEXTAREA') {
-                    e.preventDefault();
-                }
-            }}
+            onKeyDown={formKeyDown} // Ctrl+Enter saves, Enter moves to the next field (never submits by accident)
             className={containerClass}>
             <input type="hidden" {...register("is_gst_bill")} />
 
@@ -531,9 +548,21 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                     onChange={(e) => {
                                         setCustomerSearch(e.target.value);
                                         setIsCustomerDropdownOpen(true);
+                                        setNavIndex(0);
                                         setValue("customer_id", ""); // Clear ID if they edit the text
                                     }}
-                                    onFocus={() => setIsCustomerDropdownOpen(true)}
+                                    onFocus={() => { setIsCustomerDropdownOpen(true); setNavIndex(0); }}
+                                    onKeyDown={(e) => {
+                                        const input = e.currentTarget;
+                                        listKeyDown(e, {
+                                            open: isCustomerDropdownOpen,
+                                            count: filteredCustomers.length,
+                                            raw: navIndex,
+                                            setRaw: setNavIndex,
+                                            onSelect: (i) => { pickCustomer(filteredCustomers[i]); focusNextField(input); },
+                                            onClose: () => setIsCustomerDropdownOpen(false),
+                                        });
+                                    }}
                                     // Use setTimeout so the click event on the <li> registers before blur closes it
                                     onBlur={() => setTimeout(() => setIsCustomerDropdownOpen(false), 200)}
                                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2"
@@ -543,16 +572,16 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                 {isCustomerDropdownOpen && (
                                     <ul className="absolute top-[65px] left-0 z-50 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
                                         {filteredCustomers.length > 0 ? (
-                                            filteredCustomers.map(c => (
+                                            filteredCustomers.map((c, i) => (
                                                 <li
                                                     key={c.id}
+                                                    ref={(el) => { if (el && i === customerHl) el.scrollIntoView({ block: "nearest" }); }}
+                                                    onMouseEnter={() => setNavIndex(i)}
                                                     onMouseDown={(e) => {
                                                         e.preventDefault();
-                                                        setValue("customer_id", c.id, { shouldValidate: true });
-                                                        setCustomerSearch(c.name);
-                                                        setIsCustomerDropdownOpen(false);
+                                                        pickCustomer(c);
                                                     }}
-                                                    className="cursor-pointer px-4 py-2.5 text-sm hover:bg-indigo-50 dark:hover:bg-slate-700 border-b border-slate-100 last:border-0"
+                                                    className={`cursor-pointer px-4 py-2.5 text-sm hover:bg-indigo-50 dark:hover:bg-slate-700 border-b border-slate-100 last:border-0 ${i === customerHl ? 'bg-indigo-50 dark:bg-slate-700' : ''}`}
                                                 >
                                                     <div className="font-medium text-slate-800 dark:text-slate-200">{c.name}</div>
                                                     {c.phone && <div className="text-xs text-slate-500">{c.phone}</div>}
@@ -757,7 +786,11 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                     ))}
                 </datalist>
 
-                <div className="w-full overflow-visible rounded-lg border border-slate-200 dark:border-slate-700">
+                <div
+                    ref={gridRef}
+                    onKeyDown={(e) => gridKeyDown(e, { cols: gridCols, rowCount: fields.length, addRow: addRowFromKeyboard })}
+                    className="w-full overflow-visible rounded-lg border border-slate-200 dark:border-slate-700"
+                >
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             <tr>
@@ -847,6 +880,9 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                         return 0; // If both or neither start with it, keep original order
                                     });
 
+                                // Keyboard highlight: out-of-stock items cannot be chosen, so they are skipped
+                                const itemHl = resolveHighlight(navIndex, filteredItems.length, (i) => filteredItems[i].total_stock_qty <= 0);
+
                                 return (
                                     <tr key={field.id} className="bg-white dark:bg-slate-900">
                                         <td className="px-2 py-2 relative">
@@ -856,7 +892,18 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                 {...restRegister}
                                                 autoComplete="off"
                                                 placeholder="Search item..."
-                                                onFocus={() => setActiveItemDropdown(index)}
+                                                data-grid-row={index}
+                                                data-grid-col="item"
+                                                onKeyDown={(e) => listKeyDown(e, {
+                                                    open: activeItemDropdown === index && currentSearchValue.length > 0,
+                                                    count: filteredItems.length,
+                                                    raw: navIndex,
+                                                    setRaw: setNavIndex,
+                                                    isDisabled: (i) => filteredItems[i].total_stock_qty <= 0,
+                                                    onSelect: (i) => handleItemSelect(index, filteredItems[i]),
+                                                    onClose: () => setActiveItemDropdown(null),
+                                                })}
+                                                onFocus={() => { setActiveItemDropdown(index); setNavIndex(0); }}
                                                 onBlur={(e) => {
                                                     onBlur(e);
                                                     setTimeout(() => setActiveItemDropdown(null), 200);
@@ -866,6 +913,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                     setValue(`bill_line_items.${index}.item_id`, null);
                                                     setValue(`bill_line_items.${index}.batch_allocations`, []);
                                                     setActiveItemDropdown(index);
+                                                    setNavIndex(0);
                                                 }}
                                                 className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:border-indigo-500"
                                             />
@@ -995,7 +1043,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                             {activeItemDropdown === index && currentSearchValue.length > 0 && (
                                                 <ul className="absolute top-[45px] left-2 z-50 max-h-48 w-[250px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800">
                                                     {filteredItems.length > 0 ? (
-                                                        filteredItems.map(item => {
+                                                        filteredItems.map((item, i) => {
                                                             const isOutOfStock = item.total_stock_qty <= 0;
                                                             const isAlreadySelected = alreadySelectedIds.includes(item.id);
                                                             const isDisabled = isOutOfStock || isAlreadySelected;
@@ -1003,6 +1051,8 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                             return (
                                                                 <li
                                                                     key={item.id}
+                                                                    ref={(el) => { if (el && i === itemHl) el.scrollIntoView({ block: "nearest" }); }}
+                                                                    onMouseEnter={() => { if (!isOutOfStock) setNavIndex(i); }}
                                                                     onMouseDown={(e) => {
                                                                         e.preventDefault();
                                                                         if (!isOutOfStock) {
@@ -1012,7 +1062,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                                     className={`px-3 py-2 text-sm border-b border-slate-100 dark:border-slate-700 last:border-0 ${isDisabled
                                                                         ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-800/50'
                                                                         : 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700'
-                                                                        }`}
+                                                                        } ${i === itemHl ? 'bg-indigo-50 dark:bg-slate-700' : ''}`}
                                                                 >
                                                                     <div className="font-medium text-slate-800 dark:text-slate-200">
                                                                         {item.name}
@@ -1046,6 +1096,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                 <div className="flex">
                                                     <input
                                                         type="number" step="0.001"
+                                                        data-grid-row={index} data-grid-col="qty"
                                                         {...qtyField}
                                                         onFocus={(e) => handleFocusClear(e, '1')}
                                                         onBlur={(e) => handleBlurRestore(e, `bill_line_items.${index}.qty`, 1, qtyField.onBlur)}
@@ -1088,6 +1139,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                         <td className="px-2 py-2 align-top">
                                             <input
                                                 type="number" step="0.01"
+                                                data-grid-row={index} data-grid-col="price"
                                                 {...priceReg}
                                                 onFocus={(e) => handleFocusClear(e, '0')}
                                                 onBlur={(e) => handleBlurRestore(e, `bill_line_items.${index}.unit_price`, 0, priceReg.onBlur)}
@@ -1105,6 +1157,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                         <td className="px-2 py-2 align-top">
                                             <input
                                                 type="number" step="0.01"
+                                                data-grid-row={index} data-grid-col="disc"
                                                 {...discReg}
                                                 onFocus={(e) => handleFocusClear(e, '0')}
                                                 onBlur={(e) => handleBlurRestore(e, `bill_line_items.${index}.discount_pct`, 0, discReg.onBlur)}
@@ -1117,6 +1170,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                             <td className="px-2 py-2 align-top">
                                                 <input
                                                     type="number" step="0.01"
+                                                    data-grid-row={index} data-grid-col="gst"
                                                     {...gstReg}
                                                     onFocus={(e) => handleFocusClear(e, '0')}
                                                     onBlur={(e) => handleBlurRestore(e, `bill_line_items.${index}.gst_rate`, 0, gstReg.onBlur)}
@@ -1147,7 +1201,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
 
                 <button
                     type="button"
-                    onClick={() => append({ ...DEFAULT_LINE_ITEM, sort_order: fields.length })}
+                    onClick={addRow}
                     className="inline-flex w-fit items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 mt-2"
                 >
                     <Plus className="h-4 w-4" /> Add Item Row
@@ -1285,7 +1339,10 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                     className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-70"
                 >
                     <FileText className="h-4 w-4" />
-                    {isSubmitting ? "Processing..." : type === "create" ? "Save & Issue Bill" : "Update Bill"}
+                    <span className="flex items-center gap-1.5">
+                        {isSubmitting ? "Processing..." : type === "create" ? "Save & Issue Bill" : "Update Bill"}
+                        <span className="text-[10px] opacity-75 font-normal tracking-wide hidden sm:inline-block">(Ctrl + Enter)</span>
+                    </span>
                 </button>
             </div>
         </form>
