@@ -37,7 +37,7 @@ export function useLowStockInventory(tenantId: string) {
                 (item) => item.total_stock_qty === 0
             )
         };
-    }, [query.data]); 
+    }, [query.data]);
 
     return {
         ...query,
@@ -78,17 +78,19 @@ export function useCreateItem(tenantId: string) {
 export function useUpdateItem(tenantId: string) {
     const queryClient = useQueryClient();
 
-    const invalidateReport = useInvalidateInventoryReport();
+    // const invalidateReport = useInvalidateInventoryReport();
 
     return useMutation({
-        mutationFn: ({ itemId, data }: { itemId: string; data: ItemFormData }) => 
+        mutationFn: ({ itemId, data }: { itemId: string; data: ItemFormData }) =>
             updateInventoryItem(tenantId, itemId, data),
-        onSuccess: (_, variables) => {
-            // Refresh the main table list
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            // Refresh the specific item if the user is on the detail page
-            queryClient.invalidateQueries({ queryKey: ['item', variables.itemId, tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] });
+        onSuccess: async (_, variables) => {
+            await Promise.all([
+                // Refresh the main table list
+                queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+                // Refresh the specific item if the user is on the detail page
+                queryClient.invalidateQueries({ queryKey: ['item', variables.itemId, tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] }),
+            ])
 
             // invalidateReport(tenantId);
         },
@@ -125,7 +127,7 @@ export function useUpdateCategory(tenantId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ categoryId, data }: { categoryId: string; data: CategoryFormData }) => 
+        mutationFn: ({ categoryId, data }: { categoryId: string; data: CategoryFormData }) =>
             updateCategory(tenantId, categoryId, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['categories', tenantId] });
@@ -163,7 +165,7 @@ export function useUpdateBrand(tenantId: string) {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ brandId, data }: { brandId: string; data: BrandFormData }) => 
+        mutationFn: ({ brandId, data }: { brandId: string; data: BrandFormData }) =>
             updateBrand(tenantId, brandId, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['brands', tenantId] });
@@ -204,12 +206,14 @@ export function useAdjustStock(tenantId: string) {
 
     return useMutation({
         mutationFn: (data: StockAdjustmentFormData) => createStockAdjustment(tenantId, data),
-        onSuccess: (_, variables) => {
-            // Instantly refetch inventory so the new stock quantity shows up in the UI
-            queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['stock_movements', 'all', tenantId] });
-            queryClient.invalidateQueries({ queryKey: ['stock_movements', 'item', tenantId, variables.item_id] });
-            queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] });
+        onSuccess: async (_, variables) => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['item', variables.item_id, tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['stock_movements', 'all', tenantId] }),
+                queryClient.invalidateQueries({ queryKey: ['stock_movements', 'item', tenantId, variables.item_id] }),
+                queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] })
+            ]);
         }
     });
 }

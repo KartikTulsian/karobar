@@ -8,10 +8,11 @@ import { useState } from 'react'
 import { Path, Resolver, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import DeferredImageUploader from '../common/DeferredImageUploader';
+import type { ItemBatch } from '@/types/inventory';
 
 interface ItemFormProps {
     type: "create" | "update";
-    defaultValues?: Partial<ItemFormData>;
+    defaultValues?: Partial<ItemFormData> & { batches?: ItemBatch[]; total_stock_qty?: number };
     tenantId: string;
     isModal?: boolean;
     onCancel: () => void;
@@ -22,6 +23,13 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
 
     const { data: categories = [], isLoading: loadingCategories } = useCategories(tenantId);
     const { data: brands = [], isLoading: loadingBrands } = useBrands(tenantId);
+
+    // The OPENING-STOCK batch of this item (edit mode). Items created with 0 stock have none: then the section is simply not shown.
+    const openingBatch = type === "update"
+        ? (defaultValues?.batches ?? [])
+            .filter((b) => b.batch_number === "OPENING-STOCK" && !b.po_id)
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0] ?? null
+        : null;
 
     const {
         register,
@@ -41,12 +49,21 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
             brand_id: defaultValues?.brand_id || "",
             default_sell_price: defaultValues?.default_sell_price || 0,
             buy_price: defaultValues?.buy_price || 0,
+            ...(openingBatch && {
+                opening_buy_price: Number(openingBatch.buy_price),
+                opening_sell_price: Number(openingBatch.sell_price),
+                opening_min_sell_price: openingBatch.min_sell_price ?? null,
+                opening_max_sell_price: openingBatch.max_sell_price ?? null,
+            }),
         }
     });
 
     const buyPriceReg = register("buy_price", { valueAsNumber: true });
     const sellPriceReg = register("default_sell_price", { valueAsNumber: true });
     const stockQtyReg = register("stock_qty", { valueAsNumber: true });
+    // Registered only when the opening stock section is shown, so otherwise these stay undefined and the batch is left alone
+    const openingBuyReg = openingBatch ? register("opening_buy_price", { valueAsNumber: true }) : undefined;
+    const openingSellReg = openingBatch ? register("opening_sell_price", { valueAsNumber: true }) : undefined;
     const lowStockReg = register("low_stock_threshold", { valueAsNumber: true });
 
     // Mock state for images until Cloudinary/Supabase Storage is wired up
@@ -359,7 +376,7 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Current Total Stock</label>
                                 <input
                                     type="number"
-                                    value={defaultValues?.stock_qty || 0}
+                                    value={defaultValues?.total_stock_qty ?? 0}
                                     disabled
                                     className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 cursor-not-allowed dark:border-slate-800 dark:bg-slate-900/50"
                                 />
@@ -391,6 +408,70 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                         </div>
                     </div>
                 </div>
+
+                {/* Opening Stock Batch: edit mode only, and only when this item has an opening stock batch. Prices only. */}
+                {type === "update" && openingBatch && openingBuyReg && openingSellReg && (
+                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:col-span-2">
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/50">
+                            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Opening Stock Batch</h3>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                                {openingBatch.stock_qty} {defaultValues?.unit || "Pcs"} left in this batch
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2">
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Buy Price (₹)</label>
+                                <input
+                                    type="number" step="0.01"
+                                    {...openingBuyReg}
+                                    onFocus={(e) => handleFocusClear(e, '0')}
+                                    onBlur={(e) => handleBlurRestore(e, "opening_buy_price", 0, openingBuyReg.onBlur)}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.opening_buy_price && <span className="text-xs text-red-500">{errors.opening_buy_price.message}</span>}
+                            </div>
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Sell Price (₹) *</label>
+                                <input
+                                    type="number" step="0.01"
+                                    {...openingSellReg}
+                                    onFocus={(e) => handleFocusClear(e, '0')}
+                                    onBlur={(e) => handleBlurRestore(e, "opening_sell_price", 0, openingSellReg.onBlur)}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.opening_sell_price && <span className="text-xs text-red-500">{errors.opening_sell_price.message}</span>}
+                            </div>
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Min Sell Price (₹)</label>
+                                <input
+                                    type="number" step="0.01"
+                                    placeholder="Optional"
+                                    {...register("opening_min_sell_price")}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.opening_min_sell_price && <span className="text-xs text-red-500">{errors.opening_min_sell_price.message}</span>}
+                            </div>
+                            <div className="flex flex-col gap-1 w-full">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Max Sell Price (₹)</label>
+                                <input
+                                    type="number" step="0.01"
+                                    placeholder="Optional"
+                                    {...register("opening_max_sell_price")}
+                                    onWheel={preventScrollChange}
+                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                />
+                                {errors.opening_max_sell_price && <span className="text-xs text-red-500">{errors.opening_max_sell_price.message}</span>}
+                            </div>
+                            <p className="text-xs text-slate-400 sm:col-span-2">
+                                Prices of this batch only. Bills already made keep the prices they were billed at.
+                                To change the quantity use Adjust Stock.
+                            </p>
+                        </div>
+                    </div>
+                )}
 
             </div>
 

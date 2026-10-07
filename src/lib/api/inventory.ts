@@ -127,7 +127,11 @@ export async function createInventoryItem(
   data: ItemFormData,
 ) {
   // Extract volatile stock/pricing data so it doesn't hit the base catalog table
-  const { buy_price, stock_qty, ...insertData } = data;
+  const {
+    buy_price, stock_qty,
+    opening_buy_price, opening_sell_price, opening_min_sell_price, opening_max_sell_price,
+    ...insertData
+  } = data;
 
   const { data: newItem, error } = await supabase
     .from("items")
@@ -173,7 +177,11 @@ export async function updateInventoryItem(
   data: ItemFormData,
 ) {
   // UPDATE: Strip out buy_price and stock_qty so they don't break the update payload
-  const { id, buy_price, stock_qty, ...updateData } = data;
+  const {
+    id, buy_price, stock_qty,
+    opening_buy_price, opening_sell_price, opening_min_sell_price, opening_max_sell_price,
+    ...updateData
+  } = data;
 
   const { data: currentItem } = await supabase
     .from("items")
@@ -196,6 +204,62 @@ export async function updateInventoryItem(
   if (error) {
     console.error("Database Error updating item:", error.message);
     throw new Error(error.message || "Failed to update product.");
+  }
+
+  // if (buy_price !== undefined) {
+  //   const { data: updatedBatches, error: batchError } = await supabase
+  //     .from("item_batches")
+  //     .update({
+  //       buy_price: buy_price || 0,
+  //       // stock_qty: stock_qty || 0,
+  //       sell_price: updateData.default_sell_price, 
+  //       min_sell_price: updateData.min_sell_price ?? null,
+  //       max_sell_price: updateData.max_sell_price ?? null,
+  //     })
+  //     .eq("tenant_id", tenantId)
+  //     .eq("item_id", itemId)
+  //     .eq("batch_number", "OPENING-STOCK")
+  //     .select("id");
+
+  //   if (batchError || !updatedBatches?.length) {
+  //     const message = batchError?.message || "No opening stock batch was updated.";
+  //     console.error("Error updating opening stock batch:", message);
+  //     throw new Error(`Item catalog was updated, but opening stock pricing was not: ${message}`);
+  //   }
+  // }
+
+  const openingPatch: Record<string, number | null> = {};
+  if (opening_buy_price !== undefined) openingPatch.buy_price = opening_buy_price;
+  if (opening_sell_price !== undefined) openingPatch.sell_price = opening_sell_price;
+  if (opening_min_sell_price !== undefined) openingPatch.min_sell_price = opening_min_sell_price;
+  if (opening_max_sell_price !== undefined) openingPatch.max_sell_price = opening_max_sell_price;
+
+  if (Object.keys(openingPatch).length > 0) {
+    // Look the batch up here instead of trusting an id from the browser
+    const { data: openingBatch } = await supabase
+      .from("item_batches")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("item_id", itemId)
+      .eq("batch_number", "OPENING-STOCK")
+      .is("po_id", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (openingBatch) {
+      const { error: batchError } = await supabase
+        .from("item_batches")
+        .update(openingPatch)
+        .eq("tenant_id", tenantId)
+        .eq("id", openingBatch.id);
+
+      if (batchError) {
+        console.error("Database Error updating opening stock batch:", batchError.message);
+        throw new Error(`The product was saved, but its opening stock prices could not be updated: ${batchError.message}`);
+      }
+    }
+    // no opening batch (e.g. the item was created with 0 stock): nothing to update, and that is fine
   }
 
   const oldImages: string[] = currentItem?.images || [];
