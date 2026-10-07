@@ -94,8 +94,8 @@ export default function CustomersTable({ data, onEdit, onDelete }: CustomerTable
             </td>
 
             <td className="px-5 py-4">
-                {customer.outstanding_due > 0 ? (
-                    <span className="font-bold text-red-600">₹{customer.outstanding_due.toFixed(2)}</span>
+                {(customer.outstanding_due ?? 0) > 0 ? (
+                    <span className="font-bold text-red-600">₹{(customer.outstanding_due ?? 0).toFixed(2)}</span>
                 ) : (
                     <span className="font-medium text-slate-400">₹0.00</span>
                 )}

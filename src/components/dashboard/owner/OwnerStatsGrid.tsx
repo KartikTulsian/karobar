@@ -3,11 +3,12 @@
 import { useBills } from '@/hooks/useBilling';
 import { useDailySummaries, usePnLDashboard, useGstDashboard } from '@/hooks/useFinance';
 import { useLowStockInventory } from '@/hooks/useInventory';
-import { useCustomers } from '@/hooks/usePeople';
+import { useCustomers, useSuppliers } from '@/hooks/usePeople';
 import { useTenantStore } from '@/store/useTenantStore';
-import { Calculator, ChartLine, IndianRupee, Loader2, Receipt, TriangleAlert, Users } from 'lucide-react';
+import { Calculator, ChartLine, IndianRupee, Loader2, Receipt, TriangleAlert, Truck, Users } from 'lucide-react';
 import { useMemo } from 'react'
 import { getLocalDateString } from '@/lib/utils';
+import { toAmount } from './Duespanel';
 
 export default function OwnerStatsGrid() {
 
@@ -30,18 +31,29 @@ export default function OwnerStatsGrid() {
   }, []);
 
   // 2. Fetch all required data concurrently
-  const { data: dailySummaries, isLoading: isLoadingDaily } = useDailySummaries(tenantId, yesterday, today);
-  const { data: pnlData, isLoading: isLoadingPnl } = usePnLDashboard(tenantId, startOfMonth, endOfMonth);
-  const { data: gstData, isLoading: isLoadingGst } = useGstDashboard(tenantId, startOfMonth, endOfMonth);
-  const { data: customers, isLoading: isLoadingCust } = useCustomers(tenantId);
+  const { data: dailySummaries, isLoading: isLoadingDaily, isError: isErrDaily, refetch: refetchDaily } = useDailySummaries(tenantId, yesterday, today);
+  const { data: pnlData, isLoading: isLoadingPnl, isError: isErrPnl, refetch: refetchPnl } = usePnLDashboard(tenantId, startOfMonth, endOfMonth);
+  const { data: gstData, isLoading: isLoadingGst, isError: isErrGst, refetch: refetchGst } = useGstDashboard(tenantId, startOfMonth, endOfMonth);
+  const { data: customers, isLoading: isLoadingCust, isError: isErrCust, refetch: refetchCust } = useCustomers(tenantId);
+  const { data: suppliers, isLoading: isLoadingSupp, isError: isErrSupp, refetch: refetchSupp } = useSuppliers(tenantId);
   const { lowStockItems, isLoading: isLoadingInv } = useLowStockInventory(tenantId);
-  const { data: allBills, isLoading: isLoadingBills } = useBills(tenantId);
+  const { data: allBills, isLoading: isLoadingBills, isError: isErrBills, refetch: refetchBills } = useBills(tenantId);
 
   // 3. Process the stats if data is loaded
-  const isLoading = isLoadingDaily || isLoadingPnl || isLoadingGst || isLoadingCust || isLoadingInv || isLoadingBills;
+  const isLoading = isLoadingDaily || isLoadingPnl || isLoadingGst || isLoadingCust || isLoadingInv || isLoadingBills || isLoadingSupp;
+
+  const hasError = isErrDaily || isErrPnl || isErrGst || isErrCust || isErrSupp || isErrBills;
+  const retryAll = () => {
+    if (isErrDaily) refetchDaily();
+    if (isErrPnl) refetchPnl();
+    if (isErrGst) refetchGst();
+    if (isErrCust) refetchCust();
+    if (isErrSupp) refetchSupp();
+    if (isErrBills) refetchBills();
+  };
 
   const stats = useMemo(() => {
-    if (isLoading) return [];
+    if (isLoading || hasError) return [];
 
     // Sales & Trends
     const todaySummary = dailySummaries?.find(s => s.summary_date === today);
@@ -62,8 +74,12 @@ export default function OwnerStatsGrid() {
     const margin = monthRevenue > 0 ? ((monthProfit / monthRevenue) * 100) : 0;
 
     // Dues Collection
-    const totalDues = customers?.reduce((sum, c) => sum + Number(c.outstanding_due || 0), 0) || 0;
-    const customersWithDuesCount = customers?.filter(c => Number(c.outstanding_due || 0) > 0).length || 0;
+    const totalDues = customers?.reduce((sum, c) => sum + Math.max(0, toAmount(c.outstanding_due)), 0) || 0;
+    const customersWithDuesCount = customers?.filter(c => toAmount(c.outstanding_due) > 0).length || 0;
+
+    // Supplier Dues (to pay)
+    const totalSupplierDues = suppliers?.reduce((sum, s) => sum + Math.max(0, toAmount(s.outstanding_due)), 0) || 0;
+    const suppliersWithDuesCount = suppliers?.filter(s => toAmount(s.outstanding_due) > 0).length || 0;
 
     // GST & Inventory
     const gstLiability = gstData?.net_gst_payable || 0;
@@ -71,6 +87,8 @@ export default function OwnerStatsGrid() {
 
     // Formatter
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
+
+    const formatExact = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
     return [
       {
@@ -101,12 +119,21 @@ export default function OwnerStatsGrid() {
       },
       {
         title: "Dues to Collect",
-        value: formatCurrency(totalDues),
+        value: formatExact(totalDues),
         subtext: `${customersWithDuesCount} customers`,
         alert: totalDues > 0,
         icon: Users,
         color: "text-orange-600 dark:text-orange-400",
         bgColor: "bg-orange-100/50 dark:bg-orange-500/10",
+      },
+      {
+        title: "Dues to Pay",
+        value: formatExact(totalSupplierDues),
+        subtext: `${suppliersWithDuesCount} suppliers`,
+        alert: totalSupplierDues > 0,
+        icon: Truck,
+        color: "text-rose-600 dark:text-rose-400",
+        bgColor: "bg-rose-100/50 dark:bg-rose-500/10",
       },
       {
         title: "Low Stock Items",
@@ -126,7 +153,7 @@ export default function OwnerStatsGrid() {
         bgColor: "bg-slate-100 dark:bg-slate-800",
       }
     ];
-  }, [isLoading, dailySummaries, today, yesterday, pnlData, customers, gstData, lowStockItems, allBills]);
+  }, [isLoading, hasError, dailySummaries, today, yesterday, pnlData, customers, suppliers, gstData, lowStockItems, allBills]);
 
   if (isLoading) {
     return (
@@ -136,8 +163,22 @@ export default function OwnerStatsGrid() {
     );
   }
 
+  if (hasError) {
+    return (
+      <div className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 text-center dark:border-red-500/20 dark:bg-red-500/10">
+        <p className="text-sm font-medium text-red-700 dark:text-red-400">Couldn&apos;t load dashboard stats</p>
+        <button
+          onClick={retryAll}
+          className="rounded-lg border border-red-200 bg-white px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-300"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className='grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6'>
+    <div className='grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'>
       {stats.map((stat, index) => (
         <div
           key={index}

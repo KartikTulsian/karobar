@@ -8,7 +8,7 @@ export default function SuppliersDetailsCard({ supplier, payments }: { supplier:
     const rawWriteOffs = supplier.total_write_offs || 0;
     const totalWriteOffs = Math.max(0, rawWriteOffs);
     const totalAdvance = supplier.advance_balance;
-    const totalPaid = Math.max(0, supplier.total_purchases - supplier.outstanding_due - rawWriteOffs);
+    const totalPaid = Math.max(0, supplier.total_purchases - (supplier.outstanding_due ?? 0) - rawWriteOffs);
     const totalOrdersCount = supplier.purchase_orders?.length || 0;
 
     const lastPayment = payments.length > 0 ? payments[0] : null;
@@ -102,8 +102,8 @@ export default function SuppliersDetailsCard({ supplier, payments }: { supplier:
                     />
                     <StatCard
                         label="Outstanding Payable"
-                        value={`₹${supplier.outstanding_due.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                        highlight={supplier.outstanding_due > 0}
+                        value={`₹${(supplier.outstanding_due ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        highlight={(supplier.outstanding_due ?? 0) > 0}
                     />
                     <StatCard
                         label="Total Paid"

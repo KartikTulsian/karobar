@@ -1,5 +1,12 @@
 import { PaymentMethod } from "./billing";
 
+export interface DueRow {
+  id: string
+  name: string
+  phone?: string | null
+  due: number
+}
+
 export type CashEntryType = "in" | "out";
 export type CashReferenceType =
   | "manual"

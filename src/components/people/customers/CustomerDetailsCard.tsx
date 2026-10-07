@@ -10,7 +10,7 @@ export default function CustomerDetailsCard({ customer, payments, showProfit = f
     const totalWriteOffs = Math.max(0, rawWriteOffs);
     const totalAdvance = customer.advance_balance;
 
-    const totalPaid = Math.max(0, customer.total_purchases - customer.outstanding_due - rawWriteOffs);
+    const totalPaid = Math.max(0, customer.total_purchases - (customer.outstanding_due ?? 0) - rawWriteOffs);
     const totalBillsCount = customer.bills?.length || 0;
     // const avgPayment = customer.visit_count > 0 ? (customer.total_purchases / customer.visit_count) : 0;
 
@@ -79,7 +79,7 @@ export default function CustomerDetailsCard({ customer, payments, showProfit = f
                 {/* RIGHT: STATS (Span 2) */}
                 <div className="xl:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
                     <StatCard label="Total Purchases" value={`₹${customer.total_purchases.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-                    <StatCard label="Outstanding" value={`₹${customer.outstanding_due.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} highlight={customer.outstanding_due > 0} />
+                    <StatCard label="Outstanding" value={`₹${(customer.outstanding_due ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} highlight={(customer.outstanding_due ?? 0) > 0} />
                     <StatCard label="Visits" value={customer.visit_count.toString()} />
                     {/* <StatCard label="Payment Circulation" value={avgPayment.toFixed(2).toString()} /> */}
                     <StatCard label="Invoices" value={totalBillsCount.toString()} />

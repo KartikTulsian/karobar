@@ -112,7 +112,7 @@ export interface CustomerClaimMatch {
   tenant_id: string;
   name: string;
   phone: string;
-  outstanding_due: number;
+  outstanding_due: number | null;
   tenant: {
     name: string;
     address: string | null;
@@ -137,7 +137,7 @@ export interface Customer {
     country: string | null;
     type: CustomerType;
     credit_limit: number;
-    outstanding_due: number;
+    outstanding_due: number | null;
     total_write_offs: number;
     total_purchases: number;
     advance_balance: number;
@@ -163,7 +163,7 @@ export interface Supplier {
     pincode: string | null;
     country: string | null;
     payment_terms: string | null;      // e.g., 'Net 30'
-    outstanding_due: number;
+    outstanding_due: number | null;
     total_write_offs: number;
     total_purchases: number;
     advance_balance: number;

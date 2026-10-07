@@ -11,12 +11,12 @@ export async function fetchTenantDetails(tenantId: string): Promise<Tenant> {
         .select('*')
         .eq('id', tenantId)
         .single(); // Using .single() because we expect exactly one matching tenant record
-    
+
     if (error) {
         console.error("Database Error fetching tenant details:", error.message);
         throw new Error("Failed to fetch tenant details");
     }
-    
+
     return data as Tenant;
 }
 
@@ -43,19 +43,19 @@ export async function fetchUserBusinesses(): Promise<ActiveTenantContext[]> {
         console.error("Database Error fetching businesses:", error.message);
         throw new Error("Failed to fetch businesses");
     }
-    
+
 
     // Map the relational data to match your strict Zustand store interface
     return (data || []).map((membership) => {
         if (!membership.tenants) {
             throw new Error("Invalid tenant relationship detected.");
         }
-        
+
         return {
             tenantId: membership.tenants.id,
             slug: membership.tenants.slug,
             name: membership.tenants.name,
-            businessName: membership.tenants.name, 
+            businessName: membership.tenants.name,
             role: membership.role,
             gstin: membership.tenants.gstin,
             logoUrl: membership.tenants.logo_url,
@@ -65,7 +65,7 @@ export async function fetchUserBusinesses(): Promise<ActiveTenantContext[]> {
 }
 
 export async function updateTenantDetails(
-    tenantId: string, 
+    tenantId: string,
     updateData: Partial<TenantFormData> & { logo_url?: string | null }
 ) {
     // 1. Fetch current logo before updating to check for changes
@@ -113,7 +113,7 @@ export async function fetchCustomers(tenantId: string): Promise<Customer[]> {
         .select('*')
         .eq('tenant_id', tenantId)
         .order('name', { ascending: true });
-    
+
     if (error) {
         console.error("Database Error fetching customers:", error.message);
         throw new Error("Failed to fetch customers");
@@ -166,9 +166,11 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
             throw new Error(billError.message || "Failed to generate opening balance.");
         }
 
-        await supabase.rpc('sync_customer_metrics', {
-            p_customer_id: customer.id
-        })
+        const { error: customerSyncError } = await supabase.rpc('sync_customer_metrics', { p_customer_id: customer.id });
+        if (customerSyncError) {
+            console.error('Failed to sync customer metrics:', customerSyncError);
+            throw new Error('Failed to synchronize customer balance.');
+        }
     }
 
     // 2. The Auto-Match Checking Phase
@@ -176,7 +178,7 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
     let invitationSent = false;
 
     if (data.phone || data.email) {
-        
+
         let query = supabase.from('users').select('id, email');
 
         if (data.phone && data.email) {
@@ -202,7 +204,7 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
         // If we successfully resolved an email target, generate the request
         if (targetEmail) {
             let skipInvite = false;
-            
+
             // Prevent duplicate invites if they are already an active customer
             if (matchedUserId) {
                 const { data: existingMembership } = await supabase
@@ -211,7 +213,7 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
                     .eq('tenant_id', tenantId)
                     .eq('user_id', matchedUserId)
                     .maybeSingle();
-                    
+
                 if (existingMembership?.is_active) skipInvite = true;
             }
 
@@ -239,7 +241,7 @@ export async function createCustomer(tenantId: string, data: CustomerFormData) {
 export async function updateCustomer(tenantId: string, customerId: string, data: CustomerFormData) {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
-    
+
     const { id, reduce_amount, outstanding_due, advance_balance, opening_due_date, ...updateData } = data;
 
     const { data: result, error } = await supabase
@@ -281,7 +283,7 @@ export async function updateCustomer(tenantId: string, customerId: string, data:
                 await supabase
                     .from('bills')
                     .update({
-                        amount_paid: newAmountPaid, 
+                        amount_paid: newAmountPaid,
                         amount_due: newAmountDue,
                         status: newStatus
                     })
@@ -293,7 +295,7 @@ export async function updateCustomer(tenantId: string, customerId: string, data:
                         tenant_id: tenantId,
                         bill_id: bill.id,
                         amount: allocation,
-                        method: 'mixed', 
+                        method: 'mixed',
                         note: 'Account adjustment / Write-off from customer profile',
                         status: 'sanctioned',
                         recorded_by: currentUser.id
@@ -302,7 +304,12 @@ export async function updateCustomer(tenantId: string, customerId: string, data:
                 remainingAdjustment -= allocation;
             }
 
-            await supabase.rpc('sync_customer_metrics', { p_customer_id: customerId });
+            const { error: customerSyncError } = await supabase.rpc('sync_customer_metrics', { p_customer_id: customerId });
+
+            if (customerSyncError) {
+                console.error('Failed to sync customer metrics:', customerSyncError);
+                throw new Error('Failed to synchronize customer balance.');
+            }
         }
     }
 
@@ -319,7 +326,7 @@ export async function deleteCustomer(tenantId: string, customerId: string) {
     if (error) {
         console.error("Database Error deleting customer:", error.message);
         // Postgres error code for foreign key violation
-        if (error.code === '23503') { 
+        if (error.code === '23503') {
             throw new Error("Cannot delete customer because they have existing bills or transactions recorded.");
         }
         throw new Error(error.message || "Failed to delete customer.");
@@ -334,7 +341,7 @@ export async function fetchSuppliers(tenantId: string): Promise<Supplier[]> {
         .select('*')
         .eq('tenant_id', tenantId)
         .order('name', { ascending: true });
-        
+
     if (error) {
         console.error("Database Error fetching suppliers:", error.message);
         throw new Error("Failed to fetch suppliers");
@@ -347,7 +354,7 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
     if (!currentUser) throw new Error("Not authenticated");
 
     const { id, outstanding_due, opening_due_date, advance_balance, reduce_amount, ...insertData } = data;
-    
+
     // 1. Create the customer record first (Privacy Gate: user_id remains NULL)
     const { data: supplier, error: supplierError } = await supabase
         .from('suppliers')
@@ -371,9 +378,9 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
             supplier_id: supplier.id,
             po_number: `OPENING-BAL-${supplier.id.substring(0, 8).toUpperCase()}`,
             order_date: poDate, // Backdated to hide from current expense reports
-            status: 'received', 
-            payment_status: 'unpaid', 
-            is_gst_supply: false, 
+            status: 'received',
+            payment_status: 'unpaid',
+            is_gst_supply: false,
             subtotal: outstanding_due,
             total_amount: outstanding_due,
             amount_paid: 0,
@@ -388,14 +395,19 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
         }
 
         // Trigger your database RPC to sum up the new dummy PO and update outstanding_due safely
-        await supabase.rpc('sync_supplier_metrics', { p_supplier_id: supplier.id });
+        const { error: supplierSyncError } = await supabase.rpc('sync_supplier_metrics', { p_supplier_id: supplier.id });
+
+        if (supplierSyncError) {
+            console.error('Failed to sync supplier metrics:', supplierSyncError);
+            throw new Error('Failed to synchronize supplier balance.');
+        }
     }
 
     // 2. The Auto-Match Checking Phase
     let matchedUserId = null;
 
     if (data.phone || data.email) {
-        
+
         let query = supabase.from('users').select('id');
 
         if (data.phone && data.email) {
@@ -411,7 +423,7 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
 
         if (!searchError && users && users.length > 0) {
             matchedUserId = users[0].id;
-            
+
             // FUTURE IMPLEMENTATION:
             // await supabase.from('notifications').insert({
             //     tenant_id: tenantId,
@@ -421,7 +433,7 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
             //     title: "New Connection Request",
             //     body: "A shop wants to connect with your profile."
             // });
-            
+
             console.log(`[Karobar Handshake] Existing user found: ${matchedUserId}. Notification ready to be sent.`);
         }
     }
@@ -432,7 +444,7 @@ export async function createSupplier(tenantId: string, data: SupplierFormData) {
 export async function updateSupplier(tenantId: string, supplierId: string, data: SupplierFormData) {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) throw new Error("Not authenticated");
-    
+
     const { id, reduce_amount, outstanding_due, advance_balance, opening_due_date, ...updateData } = data;
 
     const { data: result, error } = await supabase
@@ -465,19 +477,19 @@ export async function updateSupplier(tenantId: string, supplierId: string, data:
 
                 const dueOnPO = Number(po.amount_due);
                 const allocation = Math.min(dueOnPO, remainingAdjustment);
-                
+
                 const newAmountDue = dueOnPO - allocation;
                 const newAmountPaid = Number(po.amount_paid) + allocation;
-                
+
                 // Matches the purchase_payment_status ENUM
                 const newStatus = newAmountDue === 0 ? 'paid' : 'partial';
 
                 await supabase
                     .from('purchase_orders')
-                    .update({ 
-                        amount_paid: newAmountPaid, 
+                    .update({
+                        amount_paid: newAmountPaid,
                         amount_due: newAmountDue,
-                        payment_status: newStatus 
+                        payment_status: newStatus
                     })
                     .eq('id', po.id);
 
@@ -487,7 +499,7 @@ export async function updateSupplier(tenantId: string, supplierId: string, data:
                         tenant_id: tenantId,
                         po_id: po.id,
                         amount: allocation,
-                        method: 'mixed', 
+                        method: 'mixed',
                         note: 'Payable adjustment / Write-off from supplier profile',
                         status: 'sanctioned',
                         recorded_by: currentUser.id
@@ -496,7 +508,12 @@ export async function updateSupplier(tenantId: string, supplierId: string, data:
                 remainingAdjustment -= allocation;
             }
 
-            await supabase.rpc('sync_supplier_metrics', { p_supplier_id: supplierId });
+            const { error: supplierSyncError } = await supabase.rpc('sync_supplier_metrics', { p_supplier_id: supplierId });
+
+            if (supplierSyncError) {
+                console.error('Failed to sync supplier metrics:', supplierSyncError);
+                throw new Error('Failed to synchronize supplier balance.');
+            }
         }
     }
 
@@ -605,7 +622,7 @@ export async function fetchTeamMembers(tenantId: string): Promise<TeamMemberWith
 }
 
 export async function inviteTeamMember(tenantId: string, data: TeamMemberFormData) {
-    const { data: { user }} = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
     const email = data.email.trim().toLowerCase();
@@ -626,7 +643,7 @@ export async function inviteTeamMember(tenantId: string, data: TeamMemberFormDat
             .eq('tenant_id', tenantId)
             .eq('user_id', existingUser.id)
             .maybeSingle();
-        
+
         if (existingMembership?.is_active) {
             throw new Error("This user is already an active member of this business.");
         }
@@ -650,7 +667,7 @@ export async function inviteTeamMember(tenantId: string, data: TeamMemberFormDat
     }
 
     console.log(`[DEBUG - Invite] Creating invitation for lowercase email: ${email}`);
-    
+
     // 2. Generate a secure invitation token (Required for ALL new or revoked users)
     const token = crypto.randomUUID();
     const { data: invitation, error: inviteErr } = await supabase

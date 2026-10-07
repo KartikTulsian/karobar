@@ -1060,7 +1060,12 @@ export async function recordPaymentBatch(tenantId: string, data: PaymentFormData
         console.log(`[DEBUG] Triggering global RPC sync for entity`);
         const rpcName = isCustomer ? 'sync_customer_metrics' : 'sync_supplier_metrics';
         const rpcParam = isCustomer ? { p_customer_id: data.entity_id } : { p_supplier_id: data.entity_id };
-        await supabase.rpc(rpcName, rpcParam);
+        const { error: syncError } = await supabase.rpc(rpcName, rpcParam);
+
+        if (syncError) {
+            console.error(`[DEBUG] Failed to sync ${isCustomer ? 'customer' : 'supplier'} metrics:`, syncError);
+            throw new Error(`Failed to synchronize ${isCustomer ? 'customer' : 'supplier'} balance.`);
+        }
 
         console.log(`[DEBUG] Payment Batch successfully committed. Batch ID: ${batchId}`);
         console.log(`=== [DEBUG - recordPaymentBatch END] ===\n`);
@@ -1214,7 +1219,14 @@ async function revertPaymentFinancials(tenantId: string, batchId: string, entity
 
     // 3. Final Metric Sync
     const rpcName = isCustomer ? 'sync_customer_metrics' : 'sync_supplier_metrics';
-    await supabase.rpc(rpcName, isCustomer ? { p_customer_id: entityId } : { p_supplier_id: entityId });
+    const rpcParam = isCustomer ? { p_customer_id: entityId } : { p_supplier_id: entityId };
+    const { error: syncError } = await supabase.rpc(rpcName, rpcParam);
+
+    if (syncError) {
+        console.error(`[DEBUG] Failed to sync ${isCustomer ? 'customer' : 'supplier'} metrics:`, syncError);
+        throw new Error(`Failed to synchronize ${isCustomer ? 'customer' : 'supplier'} balance during reversal.`);
+    }
+    
     console.log(`=== [DEBUG - revertPaymentFinancials END] ===\n`);
 }
 
