@@ -15,7 +15,7 @@ import ActionModal from '@/components/ui/ActionModal';
 import ItemForm from '@/components/inventory/ItemForm';
 import StockAdjustmentForm from '@/components/inventory/StockAdjustmentForm';
 import { useTenantStore } from '@/store/useTenantStore';
-import { formatGuide, getLatestPricing } from '@/lib/helpers/inventoryPricing';
+import { formatGuide, getBatchSource, getLatestPricing } from '@/lib/helpers/inventoryPricing';
 
 export default function ItemDetailsPage() {
   const params = useParams();
@@ -57,6 +57,7 @@ export default function ItemDetailsPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"update" | "adjust">("update");
+  const [showDepleted, setShowDepleted] = useState(false);
 
   if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-600" /></div>;
   if (isError || !item) return <div className="p-8 text-red-500">Error loading item details.</div>;
@@ -64,6 +65,9 @@ export default function ItemDetailsPage() {
   const activeBatches = (item.batches?.filter(batch => batch.stock_qty > 0) || [])
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const depletedBatchesCount = (item.batches?.length || 0) - activeBatches.length;
+  const visibleBatches = showDepleted
+    ? [...(item.batches || [])].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : activeBatches;
 
   // Cost / sell price according to the latest received batch
   const latest = getLatestPricing(item);
@@ -94,7 +98,7 @@ export default function ItemDetailsPage() {
     },
     { label: "Low Stock Threshold", value: item.low_stock_threshold },
     ...(canSeeCost
-      ? [{ label: "Latest Cost Price", value: latest.hasBatch ? `₹${(latest.cost ?? 0).toFixed(2)}` : 'No stock', valueClassName: "font-bold text-amber-600 dark:text-amber-500" }]
+      ? [{ label: "Latest Cost Price", value: latest.hasBatch ? `₹${(latest.cost ?? 0).toFixed(2)}${latest.isLastKnown ? ' (last batch, out of stock)' : ''}` : 'No batch yet', valueClassName: "font-bold text-amber-600 dark:text-amber-500" }]
       : []),
     { label: "Latest Sell Price", value: `₹${latest.sell.toFixed(2)}`, valueClassName: "font-bold text-emerald-600 dark:text-emerald-500" },
     { label: "Default Sell Price (MRP)", value: `₹${item.default_sell_price.toFixed(2)}`, valueClassName: "font-bold text-slate-900 dark:text-white" },
@@ -156,19 +160,23 @@ export default function ItemDetailsPage() {
                 <Box className="h-5 w-5 text-indigo-500" /> Active Physical Stock (Batches)
               </h3>
               {depletedBatchesCount > 0 && (
-                <span className="text-xs font-medium text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full">
-                  {depletedBatchesCount} depleted batch{depletedBatchesCount !== 1 ? 'es' : ''} hidden
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDepleted(v => !v)}
+                  className="text-xs font-medium text-slate-500 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 px-2.5 py-1 rounded-full"
+                >
+                  {showDepleted ? 'Hide' : 'Show'} {depletedBatchesCount} depleted batch{depletedBatchesCount !== 1 ? 'es' : ''}
+                </button>
               )}
             </div>
 
-            {activeBatches.length > 0 ? (
+            {visibleBatches.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60">
                     <tr className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider font-bold">
                       <th className="px-4 py-3">Received On</th>
-                      <th className="px-4 py-3">Batch / PO Ref</th>
+                      <th className="px-4 py-3">Source</th>
                       <th className="px-4 py-3 text-right">Cost Price</th>
                       <th className="px-4 py-3 text-right">Sell Price</th>
                       <th className="px-4 py-3 text-right">Price Guide</th>
@@ -176,13 +184,13 @@ export default function ItemDetailsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {activeBatches.map((batch) => (
-                      <tr key={batch.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                    {visibleBatches.map((batch) => (
+                      <tr key={batch.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${batch.stock_qty <= 0 ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3.5 font-medium text-slate-700 dark:text-slate-300">
                           {new Date(batch.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-3.5 text-xs font-mono text-slate-500 dark:text-slate-400">
-                          {batch.batch_number || 'OPENING-STOCK'}
+                          {getBatchSource(batch)}
                         </td>
                         <td className="px-4 py-3.5 text-right font-medium text-amber-600 dark:text-amber-500">
                           ₹{batch.buy_price.toFixed(2)}

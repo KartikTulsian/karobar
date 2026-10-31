@@ -1,4 +1,4 @@
-import { BatchAllocation, BillDetail, BillWithCustomer, SalesReturnWithDetails } from "@/types/billing";
+import { BatchAllocation, BillDetail, BillWithCustomer, MovementCtx, SalesReturnWithDetails } from "@/types/billing";
 import { supabase } from "../supabase/client";
 import { BillFormData } from "../validations/billSchema";
 import { SalesReturnFormData } from "../validations/salesReturnSchema";
@@ -140,25 +140,50 @@ function billCheckMessage(d: {
     return d.message || "Bill validation failed. Please review the items and try again.";
 }
 
-async function syncBatchStock(allocations: BatchAllocation[] | undefined | null, multiplier: number, actionName: string) {
-    if (!allocations || allocations.length === 0) return;
+// What the stock history should record for a change (the DB writes the stock_movements row).
+// Movement type follows the document (sale / return_in); the sign of the qty shows the direction,
+// so cancelling a bill is a "sale" with +qty and the history reads "Sale reversed".
+// interface MovementCtx {
+//     type: 'sale' | 'return_in';
+//     referenceType: 'bill' | 'sales_return';
+//     referenceId: string;
+//     note: string;
+// }
 
-    for (const alloc of allocations) {
-        if (!alloc.batch_id) continue;
+/**
+ * Applies batch stock changes. Changes are NETTED per batch first, so editing a bill
+ * (restore old + deduct new) logs only the real difference instead of a "+3 then -3" pair.
+ * multiplier: 1 = add to stock, -1 = remove from stock.
+ */
+async function syncBatchStock(
+    changes: { allocations: BatchAllocation[] | undefined | null; multiplier: number }[],
+    actionName: string,
+    ctx: MovementCtx
+) {
+    const net = new Map<string, number>();
+    for (const ch of changes) {
+        for (const alloc of ch.allocations ?? []) {
+            if (!alloc.batch_id) continue;
+            net.set(alloc.batch_id, (net.get(alloc.batch_id) || 0) + Number(alloc.qty) * ch.multiplier);
+        }
+    }
 
-        // Multiplier 1 = Add to stock (Returns)
-        // Multiplier -1 = Remove from stock (Sales or Reverting Returns)
-        const qtyChange = Number(alloc.qty) * multiplier;
+    for (const [batchId, qtyChange] of net) {
+        if (qtyChange === 0) continue;
 
         const { error } = await supabase.rpc('adjust_batch_stock', {
-            p_batch_id: alloc.batch_id,
-            p_qty_change: qtyChange
+            p_batch_id: batchId,
+            p_qty_change: qtyChange,
+            p_movement_type: ctx.type,
+            p_reference_type: ctx.referenceType,
+            p_reference_id: ctx.referenceId,
+            p_note: ctx.note
         });
 
         if (error) {
-            console.error(`[DEBUG - INVENTORY] ${actionName} Sync Failed for Batch ${alloc.batch_id}:`, error.message);
+            console.error(`[DEBUG - INVENTORY] ${actionName} Sync Failed for Batch ${batchId}:`, error.message);
         } else {
-            console.log(`[DEBUG - INVENTORY] ${actionName} applied ${qtyChange} to batch ${alloc.batch_id}.`);
+            console.log(`[DEBUG - INVENTORY] ${actionName} applied ${qtyChange} to batch ${batchId}.`);
         }
     }
 }
@@ -551,7 +576,9 @@ export async function createBill(tenantId: string, data: BillFormData) {
     // 3. INVENTORY SYNC: Deduct purchased items from stock
     for (const item of safeData.bill_line_items) {
         // await syncInventoryStock(tenantId, item.item_id, -Math.abs(item.qty), "Create Bill");
-        await syncBatchStock(item.batch_allocations, -1, "Create Bill");
+        await syncBatchStock([{ allocations: item.batch_allocations, multiplier: -1 }], "Create Bill", {
+            type: 'sale', referenceType: 'bill', referenceId: newBill.id, note: `Bill ${finalBillNumber}`
+        });
     }
 
     if (checkResult.total_recovered_amount > 0) {
@@ -583,6 +610,17 @@ export async function createBill(tenantId: string, data: BillFormData) {
 
 export async function updateBill(tenantId: string, billId: string, data: BillFormData) {
     console.log(`\n=== [DEBUG - updateBill] ===`);
+    // A bill with a Sales Return attached can't be edited: check BEFORE writing anything,
+    // otherwise the bill header would be updated while its old line items stay.
+    const { count: returnCount } = await supabase
+        .from('sales_returns')
+        .select('*', { count: 'exact', head: true })
+        .eq('original_bill_id', billId)
+        .eq('tenant_id', tenantId);
+    if (returnCount && returnCount > 0) {
+        throw new Error("Cannot edit this bill because a Sales Return has already been processed against it. You must void the return first.");
+    }
+
     const finalCustomerId = await resolveCustomer(tenantId, data, true);
 
     // 1. Fetch CURRENT items held in this bill to prevent Gatekeeper double-counting
@@ -734,12 +772,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     //     .select('item_id, qty')
     //     .eq('bill_id', billId);
 
-    if (oldItems) {
-        for (const old of oldItems) {
-            // await syncInventoryStock(tenantId, old.item_id, Math.abs(old.qty), "Update Bill (Revert)");
-            await syncBatchStock(old.batch_allocations as BatchAllocation[], 1, "Update Bill (Revert)");
-        }
-    }
+    // (Old allocations are restored together with the new deduction below, as one netted change per batch.)
 
     // 2. Wipe old line items
     const { error: deleteError } = await supabase
@@ -764,10 +797,14 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
     if (insertError) throw new Error("Failed to save updated items.");
 
     // 4. INVENTORY SYNC: Deduct the newly updated item quantities from stock
-    for (const newItem of safeData.bill_line_items) {
-        // await syncInventoryStock(tenantId, newItem.item_id, -Math.abs(newItem.qty), "Update Bill (Apply)");
-        await syncBatchStock(newItem.batch_allocations, -1, "Update Bill (Apply)");
-    }
+    await syncBatchStock(
+        [
+            ...(oldItems ?? []).map(old => ({ allocations: old.batch_allocations as BatchAllocation[], multiplier: 1 })),
+            ...safeData.bill_line_items.map(n => ({ allocations: n.batch_allocations, multiplier: -1 })),
+        ],
+        "Update Bill",
+        { type: 'sale', referenceType: 'bill', referenceId: billId, note: `Bill ${updatedBill.bill_number} edited` }
+    );
 
     const newRecoveryTotal = checkResult.total_recovered_amount || 0;
     const recoveryDelta = newRecoveryTotal - oldRecoveryTotal;
@@ -802,7 +839,7 @@ export async function deleteBill(tenantId: string, billId: string, forceHardDele
 
     const { data: billToDelete } = await supabase
         .from('bills')
-        .select('status, grand_total, amount_due, customer_id')
+        .select('status, grand_total, amount_due, customer_id, bill_number')
         .eq('id', billId)
         .single();
 
@@ -821,10 +858,13 @@ export async function deleteBill(tenantId: string, billId: string, forceHardDele
 
         if (lineItems) {
             for (const item of lineItems) {
-                // await syncInventoryStock(tenantId, item.item_id, Math.abs(item.qty), "Delete Bill (Restore)");
                 totalRecoveryToRevert += Number(item.write_off_recovery || 0);
-                await syncBatchStock(item.batch_allocations as BatchAllocation[], 1, "Delete Bill (Restore)");
             }
+            await syncBatchStock(
+                lineItems.map(item => ({ allocations: item.batch_allocations as BatchAllocation[], multiplier: 1 })),
+                "Delete Bill (Restore)",
+                { type: 'sale', referenceType: 'bill', referenceId: billId, note: `Bill ${billToDelete.bill_number} cancelled` }
+            );
         }
 
         if (totalRecoveryToRevert > 0) {
@@ -979,10 +1019,11 @@ export async function createSalesReturn(tenantId: string, data: SalesReturnFormD
         }
 
         //Update inventory stock by increasing the stock
-        for (const item of validReturnItems) {
-            // await syncInventoryStock(tenantId, item.item_id, Math.abs(item.return_qty), "Create Return (Restore)");
-            await syncBatchStock(item.return_batch_allocations, 1, "Create Return (Restore)");
-        }
+        await syncBatchStock(
+            validReturnItems.map(item => ({ allocations: item.return_batch_allocations, multiplier: 1 })),
+            "Create Return (Restore)",
+            { type: 'return_in', referenceType: 'sales_return', referenceId: newReturn.id, note: `Sales return (Bill ${originalBill.bill_number})` }
+        );
     }
 
     // ==========================================
@@ -1050,9 +1091,7 @@ export async function updateSalesReturn(tenantId: string, returnId: string, data
 
     if (oldReturnItems) {
         for (const oldItem of oldReturnItems) {
-            // await syncInventoryStock(tenantId, oldItem.item_id, -Math.abs(oldItem.return_qty), "Update Return (Revert)");
             oldRevertedTotal += Number(oldItem.write_off_recovery || 0);
-            await syncBatchStock(oldItem.return_batch_allocations as BatchAllocation[], -1, "Update Return (Revert)");
         }
     }
 
@@ -1109,11 +1148,17 @@ export async function updateSalesReturn(tenantId: string, returnId: string, data
         }
 
         // 5. INVENTORY SYNC: Add the NEW return quantities back into inventory
-        for (const newItem of validReturnItems) {
-            // await syncInventoryStock(tenantId, newItem.item_id, Math.abs(newItem.return_qty), "Update Return (Apply)");
-            await syncBatchStock(newItem.return_batch_allocations, 1, "Update Return (Apply)");
-        }
     }
+
+    // Old return quantities come back out and the new ones go in, as one netted change per batch
+    await syncBatchStock(
+        [
+            ...(oldReturnItems ?? []).map(o => ({ allocations: o.return_batch_allocations as BatchAllocation[], multiplier: -1 })),
+            ...validReturnItems.map(n => ({ allocations: n.return_batch_allocations, multiplier: 1 })),
+        ],
+        "Update Return",
+        { type: 'return_in', referenceType: 'sales_return', referenceId: returnId, note: `Sales return edited (Bill ${originalBill.bill_number})` }
+    );
 
     // 4. FINANCIAL APPLY: Push the new ledger footprint
     await applyReturnFinancials(tenantId, returnId, originalBill.id, finalRefundAmount, data.refund_method, currentUser.id);
@@ -1164,18 +1209,21 @@ export async function deleteSalesReturn(tenantId: string, returnId: string) {
         .select('item_id, return_qty, return_batch_allocations, write_off_recovery')
         .eq('sales_return_id', returnId);
 
+    const bill = await fetchBillById(tenantId, returnToDelete.original_bill_id);
+    if (!bill) throw new Error("Original bill not found.");
+
     let totalRecoveryToUndo = 0;
 
     if (returnItems) {
         for (const item of returnItems) {
-            // await syncInventoryStock(tenantId, item.item_id, -Math.abs(item.return_qty), "Delete Return (Revert)");
             totalRecoveryToUndo += Number(item.write_off_recovery || 0);
-            await syncBatchStock(item.return_batch_allocations as BatchAllocation[], -1, "Delete Return (Revert)");
         }
+        await syncBatchStock(
+            returnItems.map(item => ({ allocations: item.return_batch_allocations as BatchAllocation[], multiplier: -1 })),
+            "Delete Return (Revert)",
+            { type: 'return_in', referenceType: 'sales_return', referenceId: returnId, note: `Sales return deleted (Bill ${bill.bill_number})` }
+        );
     }
-
-    const bill = await fetchBillById(tenantId, returnToDelete.original_bill_id);
-    if (!bill) throw new Error("Original bill not found.");
 
     // --- STRICT LEDGER MATH (No RPCs) ---
     await revertReturnFinancials(tenantId, returnId, bill.id);

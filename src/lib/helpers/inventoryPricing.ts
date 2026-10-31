@@ -16,23 +16,41 @@ const asGuide = (min: unknown, max: unknown): PriceGuide | null => {
     return g.min === null && g.max === null ? null : g;
 };
 
+const newest = (list: ItemBatch[]): ItemBatch | null =>
+    list.length === 0
+        ? null
+        : list.reduce((latest, b) =>
+            new Date(b.created_at).getTime() > new Date(latest.created_at).getTime() ? b : latest
+        );
+
 /** The most recently received batch THAT STILL HAS STOCK (sold-out batches are ignored). */
 export function getLatestBatch(batches?: ItemBatch[] | null): ItemBatch | null {
-    const inStock = (batches ?? []).filter((b) => Number(b.stock_qty) > 0);
-    if (inStock.length === 0) return null;
-    return inStock.reduce((latest, b) =>
-        new Date(b.created_at).getTime() > new Date(latest.created_at).getTime() ? b : latest
-    );
+    // const inStock = (batches ?? []).filter((b) => Number(b.stock_qty) > 0);
+    // if (inStock.length === 0) return null;
+    // return inStock.reduce((latest, b) =>
+    //     new Date(b.created_at).getTime() > new Date(latest.created_at).getTime() ? b : latest
+    // );
+    return newest((batches ?? []).filter((b) => Number(b.stock_qty) > 0));
+}
+
+/** Label for where a batch came from: PO number, "Opening stock" or "Stock adjustment". */
+export function getBatchSource(b: Pick<ItemBatch, "po_id" | "batch_number" | "po_number">): string {
+    if (b.po_id) return b.po_number ||  b.batch_number || "Purchase order";
+    if (!b.batch_number || b.batch_number === "OPENING-STOCK") return "Opening stock";
+    return "Stock adjustment";
 }
 
 /**
  * Cost, sell price and guide according to the latest batch with stock.
- * No batch with stock -> sell price = item default price, no cost, guide = item's own guide.
+ * When everything is sold out, falls back to the most recent sold-out batch (isLastKnown = true),
+ * so cost never goes blank. Only an item that never had a batch has no cost.
  */
 export function getLatestPricing(item: PricingItem) {
-    const latest = getLatestBatch(item.batches);
+    const inStock = getLatestBatch(item.batches);
+    const latest = inStock ?? newest(item.batches ?? []);
     return {
         hasBatch: latest !== null,
+        isLastKnown: latest !== null && inStock === null,
         cost: latest ? Number(latest.buy_price) : null,
         sell: latest ? Number(latest.sell_price) : Number(item.default_sell_price),
         guide:

@@ -47,6 +47,13 @@ export interface BillWithCustomer extends Bill {
     };
 }
 
+export interface MovementCtx {
+    type: 'sale' | 'return_in';
+    referenceType: 'bill' | 'sales_return';
+    referenceId: string;
+    note: string;
+}
+
 export interface SalesReturn {
     id: string;
     tenant_id: string;

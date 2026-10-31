@@ -129,9 +129,12 @@ async function syncPOBatches(
     tenantId: string,
     poId: string,
     poNumber: string,
+    supplierId: string | null,
     orderDate: string | undefined,
+    action: 'received' | 'edited' | 'cancelled',
     oldItems: Pick<POLineItemFormData, "item_id" | "qty_received">[],
-    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price" | "batch_min_sell_price" | "batch_max_sell_price" | "discount_pct" | "gst_rate">[]
+    newItems: Pick<POLineItemFormData, "item_id" | "qty_received" | "unit_cost" | "batch_sell_price" | "batch_min_sell_price" | "batch_max_sell_price" | "discount_pct" | "gst_rate">[],
+    dryRun = false // true = only check that the change is allowed, write nothing
 ) {
     // Fetch all batches currently tied to this Purchase Order
     const { data: existingBatches } = await supabase.from('item_batches').select('*').eq('po_id', poId);
@@ -180,34 +183,54 @@ async function syncPOBatches(
 
     const allItemIds = Array.from(new Set([...Object.keys(oldQtyMap), ...Object.keys(newQtyMap)]));
 
+    // Stock history row (type "purchase"; a negative qty reads "Purchase reversed")
+    const logPurchase = async (itemId: string, qtyChange: number) => {
+        if (!qtyChange) return;
+        const { error } = await supabase.rpc('log_stock_movement', {
+            p_tenant_id: tenantId,
+            p_item_id: itemId,
+            p_type: 'purchase',
+            p_qty_change: qtyChange,
+            p_reference_type: 'purchase_order',
+            p_reference_id: poId,
+            p_note: `PO ${poNumber} ${action}`,
+            p_supplier_id: supplierId
+        });
+        if (error) console.error(`[DEBUG - INVENTORY] Stock history log failed for item ${itemId}:`, error.message);
+    };
+
+    // PASS 1: work out every change and reject the whole PO edit if ANY batch would go negative,
+    // before anything is written (so a rejected edit can never leave half the items changed).
+    type Plan = { itemId: string; batch: any | null; difference: number; newQty: number };
+    const plans: Plan[] = [];
     for (const itemId of allItemIds) {
-        const oldQty = oldQtyMap[itemId] || 0;
-        const newQty = newQtyMap[itemId] || 0;
-        const difference = newQty - oldQty;
+        const difference = (newQtyMap[itemId] || 0) - (oldQtyMap[itemId] || 0);
+        const batch = existingBatches?.find(b => b.item_id === itemId) ?? null;
+        if (batch && Number(batch.stock_qty) + difference < 0) {
+            throw new Error(`Cannot update PO: Reducing the received quantity of an item that has already been sold would result in negative batch stock.`);
+        }
+        plans.push({ itemId, batch, difference, newQty: newQtyMap[itemId] || 0 });
+    }
+    if (dryRun) return;
 
-        const batch = existingBatches?.find(b => b.item_id === itemId);
-
+    // PASS 2: apply
+    for (const { itemId, batch, difference, newQty } of plans) {
         if (batch) {
             // Update existing batch
-            const newStockQty = Number(batch.stock_qty) + difference;
-
-            // Security Gatekeeper: Prevent negative stock if they sold items and then reduced the PO
-            if (newStockQty < 0) {
-                throw new Error(`Cannot update PO: Reducing the received quantity of an item that has already been sold would result in negative batch stock.`);
-            }
-
-            await supabase.from('item_batches').update({
-                stock_qty: newStockQty,
+            const { error: updError } = await supabase.from('item_batches').update({
+                stock_qty: Number(batch.stock_qty) + difference,
                 buy_price: newCostMap[itemId] !== undefined ? newCostMap[itemId] : batch.buy_price,
                 sell_price: newSellMap[itemId] !== undefined ? newSellMap[itemId] : batch.sell_price,
                 min_sell_price: newMinMap[itemId] !== undefined ? newMinMap[itemId] : batch.min_sell_price,
                 max_sell_price: newMaxMap[itemId] !== undefined ? newMaxMap[itemId] : batch.max_sell_price,
                 ...(createdAtIso ? { created_at: createdAtIso } : {})
             }).eq('id', batch.id);
+            if (updError) throw new Error(updError.message || "Failed to update stock batch.");
+            await logPurchase(itemId, difference);
 
         } else if (newQty > 0) {
             // Insert entirely new batch
-            await supabase.from('item_batches').insert({
+            const { error: insError } = await supabase.from('item_batches').insert({
                 tenant_id: tenantId,
                 item_id: itemId,
                 po_id: poId,
@@ -219,29 +242,57 @@ async function syncPOBatches(
                 stock_qty: newQty,
                 ...(createdAtIso ? { created_at: createdAtIso } : {})
             });
+            if (insError) throw new Error(insError.message || "Failed to create stock batch.");
+            await logPurchase(itemId, newQty);
         }
     }
 }
 
-// 2. PR BATCH SYNC: Deducts stock straight from the specific PO's Batch
-async function syncPRBatchStock(tenantId: string, poId: string, itemId: string, qtyChange: number, actionName: string) {
-    if (!itemId) return;
+// 2. PR BATCH SYNC: Changes stock on the specific PO's batch.
+// Changes are netted per item, so editing a return logs only the real difference.
+// qty < 0 = goods go back to the supplier, qty > 0 = a return is reversed.
+async function syncPRBatchStock(
+    poId: string,
+    returnId: string,
+    supplierId: string | null,
+    changes: { itemId: string | null | undefined; qty: number }[],
+    note: string,
+    actionName: string
+) {
+    const net = new Map<string, number>();
+    for (const ch of changes) {
+        if (!ch.itemId) continue;
+        net.set(ch.itemId, (net.get(ch.itemId) || 0) + ch.qty);
+    }
 
-    // Find the specific batch generated by the original PO
-    const { data: batch } = await supabase
-        .from('item_batches')
-        .select('id')
-        .eq('po_id', poId)
-        .eq('item_id', itemId)
-        .limit(1)
-        .single();
+    for (const [itemId, qtyChange] of net) {
+        if (qtyChange === 0) continue;
 
-    if (batch) {
-        const { error } = await supabase.rpc('adjust_batch_stock', { p_batch_id: batch.id, p_qty_change: qtyChange });
+        // Find the specific batch generated by the original PO
+        const { data: batch } = await supabase
+            .from('item_batches')
+            .select('id')
+            .eq('po_id', poId)
+            .eq('item_id', itemId)
+            .limit(1)
+            .maybeSingle();
+
+        if (!batch) {
+            console.error(`[DEBUG] ${actionName} Failed: No batch found for PO ${poId} and Item ${itemId}.`);
+            continue;
+        }
+
+        const { error } = await supabase.rpc('adjust_batch_stock', {
+            p_batch_id: batch.id,
+            p_qty_change: qtyChange,
+            p_movement_type: 'return_out',
+            p_reference_type: 'purchase_return',
+            p_reference_id: returnId,
+            p_note: note,
+            p_supplier_id: supplierId
+        });
         if (error) console.error(`[DEBUG] ${actionName} Sync Failed:`, error.message);
         else console.log(`[DEBUG] ${actionName} applied ${qtyChange} to batch ${batch.id}.`);
-    } else {
-        console.error(`[DEBUG] ${actionName} Failed: No batch found for PO ${poId} and Item ${itemId}.`);
     }
 }
 
@@ -603,7 +654,7 @@ export async function createPurchaseOrder(tenantId: string, data: PurchaseOrderF
         //         await syncInventoryStock(tenantId, item.item_id, Math.abs(item.qty_received), "Create PO (Receive)");
         //     }
         // }
-        await syncPOBatches(tenantId, newPO.id, finalPoNumber, safeData.order_date, [], safeData.po_line_items);
+        await syncPOBatches(tenantId, newPO.id, finalPoNumber, safeData.supplier_id, safeData.order_date, 'received', [], safeData.po_line_items);
 
         await supabase.rpc('sync_supplier_metrics', { p_supplier_id: safeData.supplier_id });
     }
@@ -643,6 +694,9 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     if (!checkResult.isValid) throw new Error(`Data sync error. Form total does not match server total.`);
 
     const safeData = checkResult.sanitizedData;
+
+    // Pre-check stock BEFORE writing anything, so a rejected edit leaves the PO untouched
+    await syncPOBatches(tenantId, poId, safeData.po_number || oldPO.po_number, safeData.supplier_id, safeData.order_date, 'edited', oldItems || [], safeData.status === 'draft' ? [] : safeData.po_line_items, true);
 
     // Step A: INVENTORY SYNC (Subtract old received items back out of stock before deleting)
     // const { data: oldItems } = await supabase.from('po_line_items').select('item_id, qty_received').eq('po_id', poId);
@@ -723,11 +777,9 @@ export async function updatePurchaseOrder(tenantId: string, poId: string, data: 
     //     }
     // }
 
+    // Passes old and new state so batches follow the PO (a PO moved back to draft gives its stock back)
     const newItemsPayload = safeData.status === 'draft' ? [] : safeData.po_line_items;
-    if (safeData.status !== 'draft') {
-        // NEW: Passes old state and new state to intelligently update batches
-        await syncPOBatches(tenantId, poId, safeData.po_number || oldPO.po_number, safeData.order_date, oldItems || [], newItemsPayload);
-    }
+    await syncPOBatches(tenantId, poId, safeData.po_number || oldPO.po_number, safeData.supplier_id, safeData.order_date, 'edited', oldItems || [], newItemsPayload);
 
     // Step E: SUPPLIER METRICS
     await supabase.rpc('sync_supplier_metrics', { p_supplier_id: safeData.supplier_id });
@@ -774,7 +826,7 @@ export async function deletePurchaseOrder(tenantId: string, poId: string, forceH
             .eq('po_id', poId);
 
         if (lineItems) {
-            await syncPOBatches(tenantId, poId, poToDelete.po_number, undefined, lineItems, []);
+            await syncPOBatches(tenantId, poId, poToDelete.po_number, poToDelete.supplier_id, undefined, 'cancelled', lineItems, []);
         }
     }
 
@@ -913,12 +965,11 @@ export async function createPurchaseReturn(tenantId: string, data: PurchaseRetur
         if (itemsError) throw new Error(itemsError.message || "Failed to save return items");
 
         // INVENTORY SYNC: Subtract returned items from warehouse stock
-        for (const item of validReturnItems) {
-            if (item.item_id) {
-                await syncPRBatchStock(tenantId, data.original_po_id, item.item_id, -Math.abs(item.return_qty), "Create PR (Outbound)");
-                // await syncInventoryStock(tenantId, item.item_id, -Math.abs(item.return_qty), "Purchase Return (Outbound)");
-            }
-        }
+        await syncPRBatchStock(
+            data.original_po_id, newReturn.id, originalPO.supplier_id,
+            validReturnItems.map(item => ({ itemId: item.item_id, qty: -Math.abs(item.return_qty) })),
+            `Purchase return (PO ${originalPO.po_number})`, "Create PR (Outbound)"
+        );
     }
 
     // STRICT LEDGER MATH
@@ -950,7 +1001,7 @@ export async function updatePurchaseReturn(tenantId: string, returnId: string, d
     // 2. SERVER-SIDE INVENTORY GATEKEEPER
     const itemIds = data.return_items.map(item => item.item_id).filter(Boolean);
     if (itemIds.length > 0) {
-        const { data: dbItems } = await supabase.from('items').select('id, total_stock_qty').in('id', itemIds);
+        const { data: dbItems } = await supabase.from('inventory_summary').select('id, total_stock_qty').in('id', itemIds);
         if (dbItems) {
             for (const item of data.return_items) {
                 if (item.item_id && item.return_qty > 0) {
@@ -980,20 +1031,7 @@ export async function updatePurchaseReturn(tenantId: string, returnId: string, d
 
     const { verifiedReturnItems, finalRefundAmount } = PurchaseCalculationEngine.calculatePurchaseRefund(originalPO, data.return_items);
 
-    // 1. Revert Old Inventory (Add stock back temporarily)
-    // const { data: oldItems } = await supabase
-    //     .from('purchase_return_items')
-    //     .select('*')
-    //     .eq('purchase_return_id', returnId);
-
-    if (oldItems) {
-        for (const item of oldItems) {
-            if (item.item_id) {
-                // await syncInventoryStock(tenantId, item.item_id, Math.abs(item.return_qty), "Update PR (Revert)");
-                await syncPRBatchStock(tenantId, oldReturn.original_po_id, item.item_id, Math.abs(item.return_qty), "Update PR (Revert)");
-            }
-        }
-    }
+    // (Old return quantities are put back together with the new deduction below, as one netted change.)
 
     // FINANCIAL REVERT
     await revertPurchaseReturnFinancials(tenantId, returnId, oldReturn.original_po_id);
@@ -1028,13 +1066,16 @@ export async function updatePurchaseReturn(tenantId: string, returnId: string, d
         const { error: insertError } = await supabase.from('purchase_return_items').insert(lineItemsPayload);
         if (insertError) throw new Error(insertError.message || "Failed to save updated returned items.");
 
-        for (const item of validReturnItems) {
-            // if (item.item_id) await syncInventoryStock(tenantId, item.item_id, -Math.abs(item.return_qty), "Update PR (Apply)");
-            if (item.item_id) {
-                await syncPRBatchStock(tenantId, originalPO.id, item.item_id, -Math.abs(item.return_qty), "Update PR (Apply)");
-            }
-        }
     }
+
+    await syncPRBatchStock(
+        originalPO.id, returnId, originalPO.supplier_id,
+        [
+            ...(oldItems ?? []).map(o => ({ itemId: o.item_id, qty: Math.abs(o.return_qty) })),
+            ...validReturnItems.map(n => ({ itemId: n.item_id, qty: -Math.abs(n.return_qty) })),
+        ],
+        `Purchase return edited (PO ${originalPO.po_number})`, "Update PR"
+    );
 
     // FINANCIAL APPLY
     await applyPurchaseReturnFinancials(tenantId, returnId, originalPO.id, finalRefundAmount, data.refund_method, currentUser.id);
@@ -1053,6 +1094,9 @@ export async function deletePurchaseReturn(tenantId: string, returnId: string) {
     const { data: returnToDelete } = await supabase.from('purchase_returns').select('refund_amount, refund_method, original_po_id').eq('id', returnId).single();
     if (!returnToDelete) return true;
 
+    const originalPO = await fetchPurchaseOrderById(tenantId, returnToDelete.original_po_id);
+    if (!originalPO) throw new Error("Original PO not found.");
+
     // 1. Revert Inventory (Add stock back because the return was cancelled)
     const { data: oldItems } = await supabase
         .from('purchase_return_items')
@@ -1060,17 +1104,12 @@ export async function deletePurchaseReturn(tenantId: string, returnId: string) {
         .eq('purchase_return_id', returnId);
 
     if (oldItems) {
-        for (const item of oldItems) {
-            if (item.item_id) {
-                await syncPRBatchStock(tenantId, returnToDelete.original_po_id, item.item_id, Math.abs(item.return_qty), "Delete PR (Revert)");
-                // await syncInventoryStock(tenantId, item.item_id, Math.abs(item.return_qty), "Delete PR (Revert)");
-            }
-        }
+        await syncPRBatchStock(
+            returnToDelete.original_po_id, returnId, originalPO.supplier_id,
+            oldItems.map(item => ({ itemId: item.item_id, qty: Math.abs(item.return_qty) })),
+            `Purchase return deleted (PO ${originalPO.po_number})`, "Delete PR (Revert)"
+        );
     }
-
-    // 2. Update PO Balance & Supplier Metrics
-    const originalPO = await fetchPurchaseOrderById(tenantId, returnToDelete.original_po_id);
-    if (!originalPO) throw new Error("Original PO not found.");
 
     // STRICT LEDGER MATH
     await revertPurchaseReturnFinancials(tenantId, returnId, originalPO.id);

@@ -19,6 +19,8 @@ export function useItem(tenantId: string, itemId: string) {
         queryKey: ['item', itemId, tenantId],
         queryFn: () => fetchItemById(tenantId, itemId),
         enabled: !!tenantId && !!itemId,
+        // Stock also changes from bills, POs and returns (other pages), so never show a cached copy on open
+        refetchOnMount: 'always',
     })
 }
 
@@ -70,6 +72,7 @@ export function useCreateItem(tenantId: string) {
         onSuccess: () => {
             // This instantly refreshes the items table!
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
+            queryClient.invalidateQueries({ queryKey: ['stock_movements'] }); // the opening-stock row
             queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] });
         },
     });
@@ -105,6 +108,7 @@ export function useDeleteItem(tenantId: string) {
         onSuccess: () => {
             // Refresh the table after deletion
             queryClient.invalidateQueries({ queryKey: ['inventory', 'items', tenantId] });
+            queryClient.invalidateQueries({ queryKey: ['stock_movements'] });
             queryClient.invalidateQueries({ queryKey: ['reports', 'inventory', tenantId] });
         },
     });
@@ -190,6 +194,7 @@ export function useAllStockMovements(tenantId: string) {
         queryKey: ['stock_movements', 'all', tenantId],
         queryFn: () => fetchAllStockMovements(tenantId),
         enabled: !!tenantId,
+        refetchOnMount: 'always', // bills, POs and returns add rows from other pages
     });
 }
 
@@ -198,6 +203,7 @@ export function useItemStockMovements(tenantId: string, itemId: string) {
         queryKey: ['stock_movements', 'item', tenantId, itemId],
         queryFn: () => fetchItemStockMovements(tenantId, itemId),
         enabled: !!tenantId && !!itemId,
+        refetchOnMount: 'always', // bills, POs and returns add rows from other pages
     });
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
 import { useBills } from '@/hooks/useBilling';
-import { useDailySummaries, usePnLDashboard, useGstDashboard } from '@/hooks/useFinance';
+import { usePnLDashboard, useGstDashboard } from '@/hooks/useFinance';
 import { useLowStockInventory } from '@/hooks/useInventory';
 import { useCustomers, useSuppliers } from '@/hooks/usePeople';
 import { useTenantStore } from '@/store/useTenantStore';
-import { Calculator, ChartLine, IndianRupee, Loader2, LucideIcon, Receipt, TriangleAlert, Truck, Users } from 'lucide-react';
+import { Calculator, ChartLine, IndianRupee, LucideIcon, Receipt, TriangleAlert, Truck, Users } from 'lucide-react';
 import { useMemo } from 'react'
 import { getLocalDateString } from '@/lib/utils';
 import { toAmount } from './Duespanel';
@@ -87,7 +87,6 @@ export default function OwnerStatsGrid() {
   }, []);
  
   // 2. Fetch all required data concurrently
-  const { data: dailySummaries, isLoading: isLoadingDaily, isError: isErrDaily, refetch: refetchDaily } = useDailySummaries(tenantId, yesterday, today);
   const { data: pnlData, isLoading: isLoadingPnl, isError: isErrPnl, refetch: refetchPnl } = usePnLDashboard(tenantId, startOfMonth, endOfMonth);
   const { data: gstData, isLoading: isLoadingGst, isError: isErrGst, refetch: refetchGst } = useGstDashboard(tenantId, startOfMonth, endOfMonth);
   const { data: customers, isLoading: isLoadingCust, isError: isErrCust, refetch: refetchCust } = useCustomers(tenantId);
@@ -96,11 +95,10 @@ export default function OwnerStatsGrid() {
   const { data: allBills, isLoading: isLoadingBills, isError: isErrBills, refetch: refetchBills } = useBills(tenantId);
  
   // 3. Process the stats if data is loaded
-  const isLoading = isLoadingDaily || isLoadingPnl || isLoadingGst || isLoadingCust || isLoadingInv || isLoadingBills || isLoadingSupp;
-  const hasError = isErrDaily || isErrPnl || isErrGst || isErrCust || isErrSupp || isErrBills;
+  const isLoading = isLoadingPnl || isLoadingGst || isLoadingCust || isLoadingInv || isLoadingBills || isLoadingSupp;
+  const hasError = isErrPnl || isErrGst || isErrCust || isErrSupp || isErrBills;
  
   const retryAll = () => {
-    if (isErrDaily) refetchDaily();
     if (isErrPnl) refetchPnl();
     if (isErrGst) refetchGst();
     if (isErrCust) refetchCust();
@@ -111,17 +109,18 @@ export default function OwnerStatsGrid() {
   const stats: Stat[] = useMemo(() => {
     if (isLoading || hasError) return [];
  
-    // Sales & Trends
-    const todaySummary = dailySummaries?.find(s => s.summary_date === today);
-    const yesterdaySummary = dailySummaries?.find(s => s.summary_date === yesterday);
+    // Sales & Trends: worked out live from the bills (cancelled bills excluded),
+    // using the same rule as the Profit & Loss page (a bill counts on its bill_date at its grand total).
+    const liveBills = allBills?.filter(b => b.status !== 'cancelled') || [];
+    const todaysBills = liveBills.filter(b => b.bill_date === today);
+    const yesterdaysBills = liveBills.filter(b => b.bill_date === yesterday);
  
-    const todaySales = Number(todaySummary?.total_sales || 0);
-    const yesterdaySales = Number(yesterdaySummary?.total_sales || 0);
+    const todaySales = todaysBills.reduce((sum, b) => sum + Number(b.grand_total || 0), 0);
+    const yesterdaySales = yesterdaysBills.reduce((sum, b) => sum + Number(b.grand_total || 0), 0);
     const salesTrend = yesterdaySales > 0 ? ((todaySales - yesterdaySales) / yesterdaySales) * 100 : 0;
-    const todayBillsCount = Number(todaySummary?.bill_count || 0);
+    const todayBillsCount = todaysBills.length;
  
     // Pending Bills Count (Today)
-    const todaysBills = allBills?.filter(b => b.bill_date === today) || [];
     const pendingTodayCount = todaysBills.filter(b => b.status === 'issued' || b.status === 'partial').length;
  
     // Profit & Margins
@@ -209,7 +208,7 @@ export default function OwnerStatsGrid() {
         bgColor: "bg-red-100/50 dark:bg-red-500/10",
       },
     ];
-  }, [isLoading, hasError, dailySummaries, today, yesterday, pnlData, customers, suppliers, gstData, lowStockItems, allBills]);
+  }, [isLoading, hasError, today, yesterday, pnlData, customers, suppliers, gstData, lowStockItems, allBills]);
  
   if (isLoading) {
     return (

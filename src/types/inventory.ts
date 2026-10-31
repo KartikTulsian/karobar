@@ -13,6 +13,7 @@ export interface ItemBatch {
     max_sell_price?: number | null;
     stock_qty: number;
     created_at: string;
+    po_number?: string | null; // resolved from po_id when the item is fetched (display only)
 }
 
 export interface InventoryItem {

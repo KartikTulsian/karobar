@@ -68,7 +68,7 @@ export default function BillsTable({ data }: BillsTableProps) {
 
             <td className="px-5 py-4 hidden md:table-cell text-slate-600 dark:text-slate-400">
                 <div>{new Date(bill.bill_date).toLocaleDateString('en-GB')}</div>
-                <div className="text-xs">{new Date(bill.bill_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                {/* <div className="text-xs">{new Date(bill.bill_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div> */}
             </td>
 
             <td className="px-5 py-4 font-medium text-slate-900 dark:text-white">

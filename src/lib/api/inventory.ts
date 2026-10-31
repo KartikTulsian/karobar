@@ -3,8 +3,6 @@ import {
   Category,
   InventoryItem,
   InventoryItemDetail,
-  ItemBatch,
-  PriceGuide,
   StockMovementWithDetails,
 } from "@/types/inventory";
 import { supabase } from "../supabase/client";
@@ -92,7 +90,7 @@ export async function fetchItemById(
   // Fetch all active physical stock batches for this item
   const { data: batches } = await supabase
     .from("item_batches")
-    .select("*")
+    .select("*, purchase_orders(po_number)")
     .eq("tenant_id", tenantId)
     .eq("item_id", itemId)
     .order("created_at", { ascending: true });
@@ -118,7 +116,10 @@ export async function fetchItemById(
     brand_id: data.brand_id,
     category_name: data.categories?.name || "Uncategorized",
     brand_name: data.brands?.name || "No Brand",
-    batches: batches || [], // Append the physical stock batches to the details
+    batches: (batches || []).map(({ purchase_orders, ...b }: any) => ({
+      ...b,
+      po_number: purchase_orders?.po_number ?? null, // live PO number via po_id
+    })),
   };
 }
 
@@ -127,6 +128,7 @@ export async function createInventoryItem(
   data: ItemFormData,
 ) {
   // Extract volatile stock/pricing data so it doesn't hit the base catalog table
+  // (opening_* fields belong to the edit form only; they must never reach the items table)
   const {
     buy_price, stock_qty,
     opening_buy_price, opening_sell_price, opening_min_sell_price, opening_max_sell_price,
@@ -165,6 +167,18 @@ export async function createInventoryItem(
 
     if (batchError) {
       console.error("Error creating opening stock batch:", batchError.message);
+    } else if ((stock_qty || 0) > 0) {
+      // Stock history: opening balance
+      const { error: logError } = await supabase.rpc("log_stock_movement", {
+        p_tenant_id: tenantId,
+        p_item_id: newItem.id,
+        p_type: "adjustment",
+        p_qty_change: stock_qty,
+        p_reference_type: "opening_stock",
+        p_reference_id: newItem.id,
+        p_note: "Opening stock",
+      });
+      if (logError) console.error("Error logging opening stock movement:", logError.message);
     }
   }
 
@@ -206,28 +220,8 @@ export async function updateInventoryItem(
     throw new Error(error.message || "Failed to update product.");
   }
 
-  // if (buy_price !== undefined) {
-  //   const { data: updatedBatches, error: batchError } = await supabase
-  //     .from("item_batches")
-  //     .update({
-  //       buy_price: buy_price || 0,
-  //       // stock_qty: stock_qty || 0,
-  //       sell_price: updateData.default_sell_price, 
-  //       min_sell_price: updateData.min_sell_price ?? null,
-  //       max_sell_price: updateData.max_sell_price ?? null,
-  //     })
-  //     .eq("tenant_id", tenantId)
-  //     .eq("item_id", itemId)
-  //     .eq("batch_number", "OPENING-STOCK")
-  //     .select("id");
-
-  //   if (batchError || !updatedBatches?.length) {
-  //     const message = batchError?.message || "No opening stock batch was updated.";
-  //     console.error("Error updating opening stock batch:", message);
-  //     throw new Error(`Item catalog was updated, but opening stock pricing was not: ${message}`);
-  //   }
-  // }
-
+  // Opening stock batch: prices only (quantity is changed through Adjust Stock).
+  // Only the fields the form actually sent are touched; null clears a min / max guide.
   const openingPatch: Record<string, number | null> = {};
   if (opening_buy_price !== undefined) openingPatch.buy_price = opening_buy_price;
   if (opening_sell_price !== undefined) openingPatch.sell_price = opening_sell_price;
@@ -586,4 +580,3 @@ export async function createStockAdjustment(
 
   return movementId;
 }
- 

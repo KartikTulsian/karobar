@@ -22,6 +22,14 @@ export default function StockHistoryTable({ data, showItemName = true }: StockHi
         { header: "Recorded By", accessor: "user", sortable: false, className: "hidden sm:table-cell" },
     ];
 
+    // Reversals keep the document's type but flip the sign: "Sale" with +qty = sale cancelled/edited down
+    const reversedLabels: Partial<Record<MovementType, string>> = {
+        sale: "Sale reversed", purchase: "Purchase reversed", return_in: "Return In reversed", return_out: "Return Out reversed"
+    };
+    const isReversal = (m: StockMovementWithDetails) =>
+        (m.qty_change > 0 && m.type === "sale") || (m.qty_change > 0 && m.type === "return_out") ||
+        (m.qty_change < 0 && m.type === "purchase") || (m.qty_change < 0 && m.type === "return_in");
+
     const formatMovementType = (type: MovementType) => {
         const formats: Record<MovementType, { label: string, color: string, icon: JSX.Element }> = {
             purchase: { label: "Purchase", color: "text-blue-700 bg-blue-50 ring-blue-600/20", icon: <ArrowDownRight className="h-3 w-3 mr-1" /> },
@@ -74,7 +82,7 @@ export default function StockHistoryTable({ data, showItemName = true }: StockHi
                 <td className="px-5 py-4">
                     <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-bold ring-1 ring-inset ${typeFormat.color} dark:bg-opacity-10 dark:ring-opacity-20`}>
                         {typeFormat.icon}
-                        {typeFormat.label}
+                        {isReversal(movement) ? reversedLabels[movement.type] : typeFormat.label}
                     </span>
                 </td>
 
