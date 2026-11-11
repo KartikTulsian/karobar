@@ -1,5 +1,6 @@
 "use client";
 
+import CashFlowCard from '@/components/finance/pnl/CashFlowCard';
 import PnLCharts from '@/components/finance/pnl/PnLCharts';
 import PnLControlPanel from '@/components/finance/pnl/PnLControlPanel';
 import PnLDataTables from '@/components/finance/pnl/PnLDataTables';
@@ -30,6 +31,9 @@ export default function FinancePnLPage() {
           <p className="text-sm text-gray-500 mt-1">Track your business margins and operational costs.</p>
         </div>
       </div>
+
+      {/* Actual money in / out by month (its own period selector, independent of the date range below) */}
+      <CashFlowCard tenantId={tenantId} />
 
       <PnLControlPanel 
         dateRange={dateRange} 

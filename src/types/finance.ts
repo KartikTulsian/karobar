@@ -134,6 +134,21 @@ export interface PnLDashboardData {
   };
 }
 
+export type CashFlowGroup = "day" | "week" | "month";
+ 
+export interface CashFlowRow {
+    period: string; // YYYY-MM-DD: first day of the day / week / month
+    customer_receipts: number;
+    supplier_refunds: number;
+    other_in: number;
+    supplier_payments: number;
+    expenses: number;
+    customer_refunds: number;
+    other_out: number;
+    total_in: number;
+    total_out: number;
+}
+
 // ==========================================
 // GST / TAX INTERFACES
 // ==========================================

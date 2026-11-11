@@ -3,6 +3,7 @@
 import DeleteConfirmForm from '@/components/common/DeleteConfirmForm';
 import PaymentForm from '@/components/finance/payments/PaymentForm';
 import BillCarousel from '@/components/people/customers/BillCarousel';
+import { billsToDocs } from '@/lib/helpers/breakdown';
 import CustomerBillsTable from '@/components/people/customers/CustomerBillsTable';
 import CustomerDetailsCard from '@/components/people/customers/CustomerDetailsCard';
 import CustomerForm from '@/components/people/customers/CustomerForm';
@@ -17,8 +18,9 @@ import { useTenantStore } from '@/store/useTenantStore';
 import { CustomerProfileData } from '@/types/people';
 import { ArrowLeft, CreditCard, Download, Edit, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-toastify';
+import BreakdownCard, { useDocBreakdown } from '@/components/people/customers/BreakdownCard';
 
 const mapToFormData = (customer: CustomerProfileData | undefined): Partial<CustomerFormData> | undefined => {
     if (!customer) return undefined;
@@ -67,6 +69,14 @@ export default function IndividualCustomerPage() {
 
     const [showProfit, setShowProfit] = useState(false);
     // const customerPayments = allPayments.filter(p => p.flow_type === 'in' && p.entity_id === customerId);
+
+    // Breakdown by vehicle / reference / etc. Computed from the bills already loaded above: no extra queries.
+    const allBills = useMemo(() => customer?.bills ?? [], [customer]);
+    const breakdown = useDocBreakdown(useMemo(() => billsToDocs(allBills), [allBills]));
+    const visibleBills = useMemo(
+        () => (breakdown.visibleIds ? allBills.filter((b) => breakdown.visibleIds!.has(b.id)) : allBills),
+        [allBills, breakdown.visibleIds]
+    );
 
     useEffect(() => {
         if (customer && customer.bills && customer.bills.length > 0 && !activeBillId) {
@@ -213,9 +223,11 @@ export default function IndividualCustomerPage() {
                 showProfit={showProfit}
             />
 
-            {/* Bills Table is always shown */}
+            <BreakdownCard state={breakdown} docLabel="bills" shownCount={visibleBills.length} totalCount={allBills.length} />
+
+            {/* Bills Table is always shown (filtered by the breakdown above when a row is selected) */}
             <CustomerBillsTable 
-                bills={customer.bills || []} 
+                bills={visibleBills} 
                 payments={customerPayments}
                 activeBillId={activeBillId} 
                 onRowClick={handleBillSelect} 

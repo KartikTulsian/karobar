@@ -4,6 +4,8 @@ import DeleteConfirmForm from '@/components/common/DeleteConfirmForm';
 import PaymentForm from '@/components/finance/payments/PaymentForm';
 import WalletLedger from '@/components/people/customers/WalletLedger';
 import SupplierForm from '@/components/people/suppliers/SupplierForm';
+import BreakdownCard, { useDocBreakdown } from '@/components/people/customers/BreakdownCard';
+import { ordersToDocs } from '@/lib/helpers/breakdown';
 import SupplierOrdersTable from '@/components/people/suppliers/SupplierOrdersTable';
 import SupplierPOCarousel from '@/components/people/suppliers/SupplierPOCarousel';
 import SuppliersDetailsCard from '@/components/people/suppliers/SuppliersDetailsCard';
@@ -16,7 +18,7 @@ import { useTenantStore } from '@/store/useTenantStore';
 import { SupplierProfileData } from '@/types/people';
 import { ArrowLeft, CreditCard, Download, Edit, Loader2, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'react-toastify';
 
 const mapToFormData = (supplier: SupplierProfileData | undefined): Partial<SupplierFormData> | undefined => {
@@ -59,6 +61,14 @@ export default function IndividualSupplierPage() {
     const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState<"update" | "delete" | "payment">("update");
+
+    // Breakdown by vehicle / reference / etc. Computed from the orders already loaded above: no extra queries.
+    const allOrders = useMemo(() => supplier?.purchase_orders ?? [], [supplier]);
+    const breakdown = useDocBreakdown(useMemo(() => ordersToDocs(allOrders), [allOrders]));
+    const visibleOrders = useMemo(
+        () => (breakdown.visibleIds ? allOrders.filter((o) => breakdown.visibleIds!.has(o.id)) : allOrders),
+        [allOrders, breakdown.visibleIds]
+    );
 
     useEffect(() => {
         if (supplier && supplier.purchase_orders.length > 0 && !activeOrderId) {
@@ -175,9 +185,11 @@ export default function IndividualSupplierPage() {
                 payments={supplierPayments}
             />
 
-            {/* Purchases Table */}
+            <BreakdownCard state={breakdown} docLabel="orders" shownCount={visibleOrders.length} totalCount={allOrders.length} />
+
+            {/* Purchases Table (filtered by the breakdown above when a row is selected) */}
             <SupplierOrdersTable 
-                orders={supplier.purchase_orders || []} 
+                orders={visibleOrders} 
                 payments={supplierPayments}
                 activeOrderId={activeOrderId} 
                 onRowClick={handleOrderSelect} 
