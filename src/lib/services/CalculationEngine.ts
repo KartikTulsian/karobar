@@ -1,6 +1,7 @@
 import { BatchAllocation, BillDetail, BillLineItem } from "@/types/billing";
 import { BillFormData } from "../validations/billSchema";
 import { SalesReturnFormData } from "../validations/salesReturnSchema";
+import { formatQty, roundQty, sameQty, subQty, sumQty } from "../utils";
 
 export const CalculationEngine = {
     /**
@@ -52,39 +53,37 @@ export const CalculationEngine = {
             let allocated_qty = 0;
             let final_allocations: BatchAllocation[] = isTracked ? (item.batch_allocations || []) : [];
 
-            final_allocations.forEach(alloc => {
-                allocated_qty += Number(alloc.qty);
-            });
+            allocated_qty = sumQty(final_allocations.map(alloc => alloc.qty));
 
             // SERVER-SIDE AUTO-ALLOCATION FALLBACK
             // If allocations were dropped by the frontend or don't match the Qty, repair them via DB data
-            if (Math.abs(allocated_qty - qty) > 0.001 && item.item_id && activeBatchesMap[item.item_id]) {
+            if (!sameQty(allocated_qty, qty) && item.item_id && activeBatchesMap[item.item_id]) {
                 const batches = activeBatchesMap[item.item_id];
-                let remaining = qty;
+                let remaining = roundQty(qty);
                 final_allocations = [];
 
                 // Loop through active batches (assumed pre-sorted FIFO) and re-allocate
                 for (const b of batches) {
                     if (remaining <= 0) break;
                     if (b.stock_qty > 0) {
-                        const take = Math.min(b.stock_qty, remaining);
+                        const take = roundQty(Math.min(b.stock_qty, remaining));
                         final_allocations.push({
                             batch_id: b.id,
                             qty: take,
                             buy_price: b.buy_price,
                             batch_number: b.batch_number || 'OPENING-STOCK'
                         });
-                        remaining -= take;
+                        remaining = subQty(remaining, take);
                     }
                 }
-                allocated_qty = final_allocations.reduce((sum, a) => sum + Number(a.qty), 0);
+                allocated_qty = sumQty(final_allocations.map(a => a.qty));
             }
 
             // Gatekeeper: Reject transaction if even the DB couldn't fulfill the allocations
             // (stock-tracked items only; custom items are allowed without batches)
-            if (isTracked && Math.abs(allocated_qty - qty) > 0.001) {
+            if (isTracked && !sameQty(allocated_qty, qty)) {
                 hasAllocationMismatch = true;
-                allocationErrorMessage = `Quantity mismatch on "${item.item_name}". Needed ${qty}, but allocated ${allocated_qty} from batches.`;
+                allocationErrorMessage = `Quantity mismatch on "${item.item_name}". Needed ${formatQty(qty)}, but allocated ${formatQty(allocated_qty)} from batches.`;
             }
 
             // STRICT COGS (Buy Price)
@@ -243,9 +242,7 @@ export const CalculationEngine = {
             );
 
             // BACKEND GATEKEEPER FOR RETURN BATCH ALLOCATIONS
-            let allocatedReturnQty = 0;
             const processedAllocations = (returnItem.return_batch_allocations || []).map(alloc => {
-                allocatedReturnQty += Number(alloc.qty) || 0;
                 return {
                     batch_id: alloc.batch_id,
                     qty: Number(alloc.qty) || 0,
@@ -255,8 +252,9 @@ export const CalculationEngine = {
             });
 
             // Prevent API submission if the allocated batches don't match the return quantity
-            if (safeReturnQty > 0 && Math.abs(allocatedReturnQty - safeReturnQty) > 0.001) {
-                throw new Error(`Return quantity mismatch on "${returnItem.item_name}". Expected to return ${safeReturnQty}, but allocated ${allocatedReturnQty} to batches.`);
+            const allocatedReturnQty = sumQty(processedAllocations.map(a => a.qty));
+            if (safeReturnQty > 0 && !sameQty(allocatedReturnQty, safeReturnQty)) {
+                throw new Error(`Return quantity mismatch on "${returnItem.item_name}". Expected to return ${formatQty(safeReturnQty)}, but allocated ${formatQty(allocatedReturnQty)} to batches.`);
             }
 
             // Calculate return value based on the historical unit price & tax

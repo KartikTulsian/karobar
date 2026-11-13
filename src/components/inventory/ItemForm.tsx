@@ -9,6 +9,7 @@ import { Path, Resolver, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import DeferredImageUploader from '../common/DeferredImageUploader';
 import type { ItemBatch } from '@/types/inventory';
+import { formatQty } from '@/lib/utils';
 
 interface ItemFormProps {
     type: "create" | "update";
@@ -243,6 +244,7 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                             <option value="Litre">Litre</option>
                             <option value="Ml">Ml</option>
                             <option value="Mtr">Mtr</option>
+                            <option value="Foot">Foot</option>
                             <option value="Box">Box</option>
                             <option value="Pack">Pack</option>
                             <option value="Dozen">Dozen</option>
@@ -386,7 +388,7 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                         <div className="flex flex-col gap-1 w-full">
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Low Stock Alert At</label>
                             <input
-                                type="number" step="1"
+                                type="number" step="0.001" min="0"
                                 {...lowStockReg}
                                 onFocus={(e) => handleFocusClear(e, '5')} // Clears 5 on focus
                                 onBlur={(e) => handleBlurRestore(e, "low_stock_threshold", 5, lowStockReg.onBlur)} // Restores 5 if left empty
@@ -415,7 +417,7 @@ export default function ItemForm({ type, defaultValues, tenantId, isModal, onCan
                         <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/50">
                             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Opening Stock Batch</h3>
                             <span className="text-xs text-slate-500 dark:text-slate-400">
-                                {openingBatch.stock_qty} {defaultValues?.unit || "Pcs"} left in this batch
+                                {formatQty(openingBatch.stock_qty)} {defaultValues?.unit || "Pcs"} left in this batch
                             </span>
                         </div>
                         <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2">

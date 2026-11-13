@@ -14,7 +14,7 @@ import { InventoryItem, ItemBatch } from '@/types/inventory';
 import { toast } from 'react-toastify';
 import { useNavigation } from '@/hooks/useNavigation';
 import { BatchAllocation } from '@/types/billing';
-import { getLocalDateString } from '@/lib/utils';
+import { formatQty, getLocalDateString, normalizeUnit, roundQty, sameQty, subQty, sumQty } from '@/lib/utils';
 
 interface BillFormProps {
     type: "create" | "update";
@@ -173,8 +173,6 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         }
     }, [watchCustomerType, setValue, type]);
 
-    const VALID_UNITS = ["Pcs", "Set", "Kg", "Litre", "Ml", "Mtr", "Box", "Pack", "Dozen", "Gm"];
-
     const getVirtualBatches = (itemId: string | null | undefined, lineItemId?: string) => {
         if (!itemId) return [];
         const invItem = items.find(i => i.id === itemId);
@@ -188,7 +186,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
             const originallyHeld = originalRowData?.batch_allocations?.find(oba => oba.batch_id === b.id)?.qty || 0;
             return {
                 ...b,
-                stock_qty: b.stock_qty + Number(originallyHeld),
+                stock_qty: sumQty([b.stock_qty, originallyHeld]),
                 _held_qty: Number(originallyHeld),
                 _shelf_qty: b.stock_qty
             };
@@ -197,11 +195,11 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
 
     const getVirtualTotalStock = (itemId: string | null | undefined, lineItemId?: string) => {
         const virtualBatches = getVirtualBatches(itemId, lineItemId);
-        return virtualBatches.reduce((sum, b) => sum + b.stock_qty, 0);
+        return sumQty(virtualBatches.map(b => b.stock_qty));
     };
 
     const autoAllocateFifo = (batches: ItemBatch[], neededQty: number): BatchAllocation[] => {
-        let remaining = neededQty;
+        let remaining = roundQty(neededQty);
         const allocations: BatchAllocation[] = [];
 
         // Sort batches oldest first based on creation date
@@ -210,14 +208,14 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         for (const b of sortedBatches) {
             if (remaining <= 0) break;
             if (b.stock_qty > 0) {
-                const take = Math.min(b.stock_qty, remaining);
+                const take = roundQty(Math.min(b.stock_qty, remaining));
                 allocations.push({
                     batch_id: b.id,
                     qty: take,
                     buy_price: b.buy_price,
                     batch_number: b.batch_number || 'OPENING-STOCK'
                 });
-                remaining -= take;
+                remaining = subQty(remaining, take);
             }
         }
         return allocations;
@@ -229,17 +227,8 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         // setValue(`bill_line_items.${index}.unit_price`, selectedItem.sell_price || 0);
         setValue(`bill_line_items.${index}.hsn_code`, selectedItem.hsn_code || "");
 
-        // 1. Format the database unit to match dropdown options exactly
-        let rawUnit = selectedItem.unit || "Pcs";
-        // Handle common variations (e.g., Ltr -> Litre)
-        if (rawUnit.toLowerCase() === 'ltr' || rawUnit.toLowerCase() === 'l') rawUnit = "Litre";
-
-        const formattedUnit = rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1).toLowerCase();
-
-        // 2. Fallback to 'Pcs' if the database unit isn't in our standard list
-        const finalUnit = VALID_UNITS.includes(formattedUnit) ? formattedUnit : "Pcs";
-
-        setValue(`bill_line_items.${index}.unit`, finalUnit);
+        // Map the stored unit (Ltr, ft, feet ...) to one of the dropdown options; unknown -> Pcs
+        setValue(`bill_line_items.${index}.unit`, normalizeUnit(selectedItem.unit));
 
         setValue(`bill_line_items.${index}.gst_rate`, watchIsGst ? (selectedItem.gst_rate || 0) : 0);
 
@@ -329,10 +318,10 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
 
             // Batch Allocation & Profit Math
             let allocations = item.batch_allocations || [];
-            const currentAllocQty = allocations.reduce((sum, a) => sum + Number(a.qty), 0);
+            const currentAllocQty = sumQty(allocations.map(a => a.qty));
 
             // Failsafe: If React Hook Form dropped the allocations or they don't match the Qty, recalculate safely
-            if (currentAllocQty !== qty && item.item_id) {
+            if (!sameQty(currentAllocQty, qty) && item.item_id) {
                 // const invItem = items.find(i => i.id === item.item_id);
                 // const activeBatches = invItem?.batches?.filter(b => b.stock_qty > 0) || [];
                 // allocations = autoAllocateFifo(activeBatches, qty);
@@ -728,7 +717,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                         <div className="flex flex-col gap-1">
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Bill Status *</label>
                             <select {...register("status")} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                                <option value="" disabled>Select Status...</option>
+                                {/* <option value="" disabled>Select Status...</option> */}
                                 <option value="issued">Issued (Unpaid)</option>
                                 <option value="paid">Paid</option>
                                 <option value="partial">Partially Paid</option>
@@ -960,8 +949,8 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                                         <span className="text-[9px] text-slate-500">
                                                                             Cost: ₹{batch.buy_price} |
                                                                             {type === "update" && batch._held_qty > 0
-                                                                                ? ` Shelf: ${batch._shelf_qty} + Held: ${batch._held_qty} = Avail: ${batch.stock_qty}`
-                                                                                : ` Avail: ${batch.stock_qty}`
+                                                                                ? ` Shelf: ${formatQty(batch._shelf_qty)} + Held: ${formatQty(batch._held_qty)} = Avail: ${formatQty(batch.stock_qty)}`
+                                                                                : ` Avail: ${formatQty(batch.stock_qty)}`
                                                                             }
                                                                         </span>
                                                                     </div>
@@ -981,7 +970,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                                                 if (newQty > 0) {
                                                                                     updatedAllocations.push({
                                                                                         batch_id: batch.id,
-                                                                                        qty: Math.min(newQty, batch.stock_qty), // Gatekeeper
+                                                                                        qty: roundQty(Math.min(newQty, batch.stock_qty)), // Gatekeeper
                                                                                         buy_price: batch.buy_price,
                                                                                         batch_number: batch.batch_number
                                                                                     });
@@ -998,11 +987,11 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
 
                                                     {/* Allocation Summary & Warning */}
                                                     {(() => {
-                                                        const totalAllocated = (watchLineItems[index]?.batch_allocations || []).reduce((sum: number, a: BatchAllocation) => sum + Number(a.qty), 0);
-                                                        const isMismatch = Math.abs(totalAllocated - currentQty) > 0.001;
+                                                        const totalAllocated = sumQty((watchLineItems[index]?.batch_allocations || []).map((a: BatchAllocation) => a.qty));
+                                                        const isMismatch = !sameQty(totalAllocated, currentQty);
                                                         return (
                                                             <div className={`mt-2 p-1.5 rounded text-[10px] font-bold text-center border ${isMismatch ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
-                                                                {isMismatch ? `⚠️ Mismatch: Needed ${currentQty}, Allocated ${totalAllocated}` : `Perfectly Allocated: ${totalAllocated} Units`}
+                                                                {isMismatch ? `⚠️ Mismatch: Needed ${formatQty(currentQty)}, Allocated ${formatQty(totalAllocated)}` : `Perfectly Allocated: ${formatQty(totalAllocated)} ${watchLineItems[index]?.unit || 'Units'}`}
                                                             </div>
                                                         );
                                                     })()}
@@ -1121,6 +1110,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                                                         <option value="Litre">Litre</option>
                                                         <option value="Ml">Ml</option>
                                                         <option value="Mtr">Mtr</option>
+                                                        <option value="Foot">Foot</option>
                                                         <option value="Box">Box</option>
                                                         <option value="Pack">Pack</option>
                                                         <option value="Dozen">Dozen</option>

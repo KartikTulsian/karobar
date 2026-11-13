@@ -31,8 +31,9 @@ export const itemSchema = z.object({
     gst_rate: z.coerce.number().nullable().optional(),
 
     // Inventory
-    stock_qty: z.coerce.number().int().default(0), // Used ONLY for Opening Stock batch
-    low_stock_threshold: z.coerce.number().int().default(10),
+    // Quantities may be fractions (0.5 m, 2.25 kg); the database keeps 3 decimals
+    stock_qty: z.coerce.number().min(0, "Cannot be negative").multipleOf(0.001, "Use at most 3 decimal places").default(0), // Used ONLY for Opening Stock batch
+    low_stock_threshold: z.coerce.number().min(0, "Cannot be negative").multipleOf(0.001, "Use at most 3 decimal places").default(10),
     is_active: z.boolean().default(true),
 
     // Details

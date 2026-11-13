@@ -7,6 +7,7 @@ import ToPurchaseForm from '@/components/purchases/ToPurchaseForm';
 import ActionModal from '@/components/ui/ActionModal';
 import { useInventory } from '@/hooks/useInventory';
 import { useToPurchaseList, useRemoveFromPurchaseList, useAddToPurchaseList, useUpdatePurchaseList, useCreatePurchaseOrder } from '@/hooks/usePurchases';
+import { normalizeUnit } from '@/lib/utils';
 import { PurchaseOrderFormData } from '@/lib/validations/purchaseOrderSchema';
 import { ToPurchaseFormData } from '@/lib/validations/toPurchaseSchema';
 import { useTenantStore } from '@/store/useTenantStore';
@@ -113,9 +114,7 @@ export default function ToPurchasePage() {
                 const latestBuyPrice = sortedBatches.length > 0 ? sortedBatches[0].buy_price : 0;
 
                 // Format the unit correctly
-                let rawUnit = masterItem?.unit || "Pcs";
-                if (rawUnit.toLowerCase() === 'ltr' || rawUnit.toLowerCase() === 'l') rawUnit = "Litre";
-                const formattedUnit = rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1).toLowerCase();
+                const formattedUnit = normalizeUnit(masterItem?.unit);
 
                 return {
                     item_id: item.item_id,

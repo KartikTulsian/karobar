@@ -4,7 +4,7 @@ import { ToPurchaseFormData } from "../validations/toPurchaseSchema";
 import { POLineItemFormData, PurchaseOrderFormData } from "../validations/purchaseOrderSchema";
 import { PurchaseReturnFormData } from "../validations/purchaseReturnSchema";
 import { PurchaseCalculationEngine } from "../services/PurchaseCalculationEngine";
-import { calculateInventoryUnitCost, getLocalDateString, getUtcStartOfDateIso } from "../utils";
+import { calculateInventoryUnitCost, formatQty, getLocalDateString, getUtcStartOfDateIso, roundQty, subQty, sumQty } from "../utils";
 
 // 1. Fetch the To Purchase List (with Supplier names)
 export async function fetchToPurchaseList(tenantId: string): Promise<ToPurchaseItem[]> {
@@ -151,7 +151,7 @@ async function syncPOBatches(
     const createdAtIso = getUtcStartOfDateIso(orderDate);
 
     const oldQtyMap: Record<string, number> = {};
-    oldItems.forEach(i => { if (i.item_id) oldQtyMap[i.item_id] = (oldQtyMap[i.item_id] || 0) + Number(i.qty_received); });
+    oldItems.forEach(i => { if (i.item_id) oldQtyMap[i.item_id] = sumQty([oldQtyMap[i.item_id] || 0, i.qty_received]); });
 
     const newQtyMap: Record<string, number> = {};
     const newCostTotalsMap: Record<string, number> = {};
@@ -168,7 +168,7 @@ async function syncPOBatches(
                 Number(i.gst_rate) || 0,
                 isGstRegistered
             );
-            newQtyMap[i.item_id] = (newQtyMap[i.item_id] || 0) + receivedQty;
+            newQtyMap[i.item_id] = sumQty([newQtyMap[i.item_id] || 0, receivedQty]);
             newCostTotalsMap[i.item_id] = (newCostTotalsMap[i.item_id] || 0) + inventoryUnitCost * receivedQty;
             newSellMap[i.item_id] = Number(i.batch_sell_price) || Number(i.unit_cost) || 0;
             newMinMap[i.item_id] = toGuide(i.batch_min_sell_price);
@@ -204,9 +204,9 @@ async function syncPOBatches(
     type Plan = { itemId: string; batch: any | null; difference: number; newQty: number };
     const plans: Plan[] = [];
     for (const itemId of allItemIds) {
-        const difference = (newQtyMap[itemId] || 0) - (oldQtyMap[itemId] || 0);
+        const difference = subQty(newQtyMap[itemId] || 0, oldQtyMap[itemId] || 0);
         const batch = existingBatches?.find(b => b.item_id === itemId) ?? null;
-        if (batch && Number(batch.stock_qty) + difference < 0) {
+        if (batch && sumQty([batch.stock_qty, difference]) < 0) {
             throw new Error(`Cannot update PO: Reducing the received quantity of an item that has already been sold would result in negative batch stock.`);
         }
         plans.push({ itemId, batch, difference, newQty: newQtyMap[itemId] || 0 });
@@ -218,7 +218,7 @@ async function syncPOBatches(
         if (batch) {
             // Update existing batch
             const { error: updError } = await supabase.from('item_batches').update({
-                stock_qty: Number(batch.stock_qty) + difference,
+                stock_qty: sumQty([batch.stock_qty, difference]),
                 buy_price: newCostMap[itemId] !== undefined ? newCostMap[itemId] : batch.buy_price,
                 sell_price: newSellMap[itemId] !== undefined ? newSellMap[itemId] : batch.sell_price,
                 min_sell_price: newMinMap[itemId] !== undefined ? newMinMap[itemId] : batch.min_sell_price,
@@ -262,7 +262,7 @@ async function syncPRBatchStock(
     const net = new Map<string, number>();
     for (const ch of changes) {
         if (!ch.itemId) continue;
-        net.set(ch.itemId, (net.get(ch.itemId) || 0) + ch.qty);
+        net.set(ch.itemId, roundQty((net.get(ch.itemId) || 0) + ch.qty));
     }
 
     for (const [itemId, qtyChange] of net) {
@@ -918,8 +918,8 @@ export async function createPurchaseReturn(tenantId: string, data: PurchaseRetur
             for (const item of data.return_items) {
                 if (item.item_id && item.return_qty > 0) {
                     const dbItem = dbItems.find(i => i.id === item.item_id);
-                    if (dbItem && item.return_qty > Number(dbItem.total_stock_qty)) {
-                        throw new Error(`Transaction blocked: Return quantity (${item.return_qty}) for "${item.item_name}" exceeds available database stock (${dbItem.total_stock_qty}).`);
+                    if (dbItem && roundQty(item.return_qty) > roundQty(dbItem.total_stock_qty)) {
+                        throw new Error(`Transaction blocked: Return quantity (${formatQty(item.return_qty)}) for "${item.item_name}" exceeds available database stock (${formatQty(dbItem.total_stock_qty)}).`);
                     }
                 }
             }
@@ -1012,10 +1012,10 @@ export async function updatePurchaseReturn(tenantId: string, returnId: string, d
                         const oldReturnQty = oldItemRecord ? Number(oldItemRecord.return_qty) : 0;
 
                         // The "effective" stock is the current DB stock PLUS the stock that is about to be reverted
-                        const effectiveStock = Number(dbItem.total_stock_qty) + oldReturnQty;
+                        const effectiveStock = sumQty([dbItem.total_stock_qty, oldReturnQty]);
 
-                        if (item.return_qty > effectiveStock) {
-                            throw new Error(`Transaction blocked: Updated return qty (${item.return_qty}) for "${item.item_name}" exceeds available database stock (${effectiveStock}).`);
+                        if (roundQty(item.return_qty) > effectiveStock) {
+                            throw new Error(`Transaction blocked: Updated return qty (${formatQty(item.return_qty)}) for "${item.item_name}" exceeds available database stock (${formatQty(effectiveStock)}).`);
                         }
                     }
                 }

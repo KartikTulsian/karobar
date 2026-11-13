@@ -13,6 +13,7 @@ import {
 } from "../validations/categoryBrandSchema";
 import { StockAdjustmentFormData } from "../validations/stockAdjustmentSchema";
 import { getLatestPricing } from "../helpers/inventoryPricing";
+import { roundQty, sameQty, sumQty } from "../utils";
 
 export async function fetchInventoryItems(
   tenantId: string,
@@ -549,11 +550,8 @@ export async function createStockAdjustment(
 
   //Double check the Gatekeeper Math(losses must match allocations)
   if (data.qty_change < 0) {
-    const allocatedQty = data.batch_allocations.reduce(
-      (sum, b) => sum + b.qty,
-      0,
-    );
-    if (Math.abs(data.qty_change) !== allocatedQty) {
+    const allocatedQty = sumQty(data.batch_allocations.map((b) => b.qty));
+    if (!sameQty(Math.abs(data.qty_change), allocatedQty)) {
       throw new Error(
         `Critical Math Mismatch: Shrinkage is ${data.qty_change}, but batches allocated equal ${allocatedQty}.`,
       );
@@ -564,9 +562,9 @@ export async function createStockAdjustment(
   const { data: movementId, error } = await supabase.rpc('reconcile_inventory_stock', {
     p_tenant_id: tenantId,
     p_item_id: data.item_id,
-    p_qty_change: data.qty_change,
+    p_qty_change: roundQty(data.qty_change),
     p_reason: data.reason,
-    p_allocations: data.batch_allocations,
+    p_allocations: data.batch_allocations.map((b) => ({ ...b, qty: roundQty(b.qty) })),
     p_new_buy_price: data.new_batch_buy_price
   });
 

@@ -1,4 +1,5 @@
 import z from "zod";
+import { sameQty, sumQty } from "../utils";
 
 export const adjustmentBatchAllocationSchema = z.object({
   batch_id: z.string(),
@@ -18,7 +19,7 @@ export const stockAdjustmentSchema = z
 
     // The core math fields
     qty_before: z.coerce.number(),
-    actual_qty: z.coerce.number().min(0, "Physical stock cannot be negative"),
+    actual_qty: z.coerce.number().min(0, "Physical stock cannot be negative").multipleOf(0.001, "Use at most 3 decimal places"),
     qty_change: z.coerce.number(),
     qty_after: z.coerce.number(),
 
@@ -48,12 +49,9 @@ export const stockAdjustmentSchema = z
     (data) => {
       // SECURITY RULE 2: If losing stock, the batch deductions must equal the loss
       if (data.qty_change < 0) {
-        const allocatedQty = data.batch_allocations.reduce(
-          (sum, b) => sum + b.qty,
-          0,
-        );
-        // Using Math.abs to compare a loss of -2 with an allocation of 2
-        if (Math.abs(data.qty_change) !== allocatedQty) return false;
+        const allocatedQty = sumQty(data.batch_allocations.map((b) => b.qty));
+        // Compared at 3 decimals so a loss of 0.3 matches allocations of 0.1 + 0.2
+        if (!sameQty(Math.abs(data.qty_change), allocatedQty)) return false;
       }
       return true;
     },

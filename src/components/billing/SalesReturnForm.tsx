@@ -1,6 +1,7 @@
 "use client";
 
 import { useBill, useBills } from "@/hooks/useBilling";
+import { roundQty, sameQty, subQty, sumQty } from "@/lib/utils";
 import { SalesReturnFormData, salesReturnSchema } from "@/lib/validations/salesReturnSchema";
 import { BatchAllocation, BillWithCustomer, SalesReturnWithDetails } from "@/types/billing";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -109,13 +110,13 @@ export default function SalesReturnForm({ tenantId, isModal = false, defaultValu
     };
 
     const autoAllocateReturnFifo = (originalBatches: BatchAllocation[], neededQty: number): BatchAllocation[] => {
-        let remaining = neededQty;
+        let remaining = roundQty(neededQty);
         const allocations: BatchAllocation[] = [];
 
         for (const b of originalBatches) {
             if (remaining <= 0) break;
             // Cannot return more to a batch than what was originally sold from it
-            const take = Math.min(b.qty, remaining);
+            const take = roundQty(Math.min(b.qty, remaining));
             if (take > 0) {
                 allocations.push({
                     batch_id: b.batch_id,
@@ -123,7 +124,7 @@ export default function SalesReturnForm({ tenantId, isModal = false, defaultValu
                     buy_price: b.buy_price,
                     batch_number: b.batch_number
                 });
-                remaining -= take;
+                remaining = subQty(remaining, take);
             }
         }
         return allocations;
@@ -208,8 +209,8 @@ export default function SalesReturnForm({ tenantId, isModal = false, defaultValu
             // Clamp quantity to prevent returning more than purchased
             const safeQty = Math.min(Number(item.return_qty) || 0, item.purchased_qty);
 
-            const totalAllocated = (item.return_batch_allocations || []).reduce((sum, a) => sum + Number(a.qty), 0);
-            if (safeQty > 0 && Math.abs(totalAllocated - safeQty) > 0.001) {
+            const totalAllocated = sumQty((item.return_batch_allocations || []).map(a => a.qty));
+            if (safeQty > 0 && !sameQty(totalAllocated, safeQty)) {
                 allocationMismatch = true;
             }
 
@@ -506,8 +507,8 @@ export default function SalesReturnForm({ tenantId, isModal = false, defaultValu
                                                                 </span>
                                                                 {/* Dynamic Mismatch Warning */}
                                                                 {(() => {
-                                                                    const totalAlloc = (watchReturnItems[index]?.return_batch_allocations || []).reduce((s, a) => s + Number(a.qty), 0);
-                                                                    if (Math.abs(totalAlloc - currentQty) > 0.001) {
+                                                                    const totalAlloc = sumQty((watchReturnItems[index]?.return_batch_allocations || []).map(a => a.qty));
+                                                                    if (!sameQty(totalAlloc, currentQty)) {
                                                                         return <span className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded dark:bg-red-500/10">⚠️ Allocation Mismatch</span>;
                                                                     }
                                                                     return <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded dark:bg-emerald-500/10">Perfectly Allocated</span>;

@@ -14,7 +14,7 @@ export const billLineItemSchema = z.object({
   hsn_code: z.string().nullable().optional(),
   unit: z.string().default("Pcs"),
 
-  qty: z.coerce.number().min(0.001, "Quantity must be greater than 0"),
+  qty: z.coerce.number().min(0.001, "Quantity must be greater than 0").multipleOf(0.001, "Use at most 3 decimal places"),
   unit_price: z.coerce.number().min(0, "Price cannot be negative"),
   discount_pct: z.coerce.number().min(0).max(100).default(0),
   gst_rate: z.coerce.number().min(0).default(0),

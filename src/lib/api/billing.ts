@@ -3,7 +3,7 @@ import { supabase } from "../supabase/client";
 import { BillFormData } from "../validations/billSchema";
 import { SalesReturnFormData } from "../validations/salesReturnSchema";
 import { CalculationEngine } from "../services/CalculationEngine";
-import { getLocalDateString } from "../utils";
+import { formatQty, getLocalDateString, roundQty, sumQty } from "../utils";
 
 export async function fetchAllBills(
     tenantId: string,
@@ -164,7 +164,7 @@ async function syncBatchStock(
     for (const ch of changes) {
         for (const alloc of ch.allocations ?? []) {
             if (!alloc.batch_id) continue;
-            net.set(alloc.batch_id, (net.get(alloc.batch_id) || 0) + Number(alloc.qty) * ch.multiplier);
+            net.set(alloc.batch_id, roundQty((net.get(alloc.batch_id) || 0) + Number(alloc.qty) * ch.multiplier));
         }
     }
 
@@ -458,8 +458,8 @@ export async function createBill(tenantId: string, data: BillFormData) {
                         }
 
                         // SERVER-SIDE INVENTORY GATEKEEPER
-                        if (item.qty > Number(dbItem.total_stock_qty)) {
-                            throw new Error(`Transaction blocked: Requested quantity (${item.qty}) for "${item.item_name}" exceeds available database stock (${dbItem.total_stock_qty}).`);
+                        if (roundQty(item.qty) > roundQty(dbItem.total_stock_qty)) {
+                            throw new Error(`Transaction blocked: Requested quantity (${formatQty(item.qty)}) for "${item.item_name}" exceeds available database stock (${formatQty(dbItem.total_stock_qty)}).`);
                         }
                     }
                 }
@@ -636,13 +636,13 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
 
     if (oldItems) {
         oldItems.forEach(i => {
-            if (i.item_id) oldQtyMap[i.item_id] = Number(i.qty);
+            if (i.item_id) oldQtyMap[i.item_id] = sumQty([oldQtyMap[i.item_id] || 0, i.qty]);
             oldRecoveryTotal += Number(i.write_off_recovery || 0);
 
             if (i.batch_allocations && Array.isArray(i.batch_allocations)) {
                 i.batch_allocations.forEach((alloc) => {
                     if (alloc.batch_id) {
-                        heldBatchesMap[alloc.batch_id] = (heldBatchesMap[alloc.batch_id] || 0) + Number(alloc.qty);
+                        heldBatchesMap[alloc.batch_id] = sumQty([heldBatchesMap[alloc.batch_id] || 0, alloc.qty]);
                     }
                 });
             }
@@ -671,7 +671,7 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
                                 const heldQty = heldBatchesMap[b.id] || 0;
                                 return {
                                     ...b,
-                                    stock_qty: Number(b.stock_qty) + heldQty // Inject held stock back into the batch
+                                    stock_qty: sumQty([b.stock_qty, heldQty]) // Inject held stock back into the batch
                                 };
                             }).filter(b => b.stock_qty > 0);
                         } else {
@@ -680,10 +680,10 @@ export async function updateBill(tenantId: string, billId: string, data: BillFor
 
                         // Add the quantity they ALREADY hold back to the database stock for this check
                         const currentlyHeldQty = oldQtyMap[item.item_id] || 0;
-                        const trueAvailableStock = Number(dbItem.total_stock_qty) + currentlyHeldQty;
+                        const trueAvailableStock = sumQty([dbItem.total_stock_qty, currentlyHeldQty]);
 
-                        if (item.qty > trueAvailableStock) {
-                            throw new Error(`Transaction blocked: Requested quantity (${item.qty}) for "${item.item_name}" exceeds available stock (${trueAvailableStock}).`);
+                        if (roundQty(item.qty) > trueAvailableStock) {
+                            throw new Error(`Transaction blocked: Requested quantity (${formatQty(item.qty)}) for "${item.item_name}" exceeds available stock (${formatQty(trueAvailableStock)}).`);
                         }
                     }
                 }

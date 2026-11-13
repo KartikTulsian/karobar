@@ -12,8 +12,8 @@ export const poLineItemSchema = z.object({
   hsn_code: z.string().nullable().optional(),
   unit: z.string().default("Pcs"),
   
-  qty_ordered: z.coerce.number().min(0.001, "Quantity must be greater than 0"),
-  qty_received: z.coerce.number().default(0),
+  qty_ordered: z.coerce.number().min(0.001, "Quantity must be greater than 0").multipleOf(0.001, "Use at most 3 decimal places"),
+  qty_received: z.coerce.number().multipleOf(0.001, "Use at most 3 decimal places").default(0),
   unit_cost: z.coerce.number().min(0, "Cost cannot be negative"),
   batch_sell_price: z.coerce.number().min(0, "Sell price cannot be negative").default(0),
   batch_min_sell_price: guidePrice,

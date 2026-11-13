@@ -17,7 +17,7 @@ export const returnItemSchema = z.object({
   discount_pct: z.coerce.number().min(0).max(100).default(0),
 
   // The interactive parts
-  return_qty: z.coerce.number().min(0, "Cannot be negative"),
+  return_qty: z.coerce.number().min(0, "Cannot be negative").multipleOf(0.001, "Use at most 3 decimal places"),
   refund_total: z.number().default(0),
   write_off_recovery: z.coerce.number().default(0),
 

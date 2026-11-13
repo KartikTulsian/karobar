@@ -7,6 +7,7 @@ import { ArrowRight, Loader2, Settings2 } from 'lucide-react';
 import { useEffect, useState } from 'react'
 import { Resolver, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
+import { formatQty, roundQty, sameQty, subQty, sumQty } from '@/lib/utils';
 
 interface StockAdjustmentModalProps {
     item: InventoryItem | InventoryItemDetail;
@@ -17,7 +18,7 @@ interface StockAdjustmentModalProps {
 
 export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmitting = false }: StockAdjustmentModalProps) {
     const autoAllocateFifo = (batches: ItemBatch[], neededQty: number): AdjustmentBatchAllocation[] => {
-        let remaining = Math.abs(neededQty);
+        let remaining = roundQty(Math.abs(neededQty));
         const allocations: AdjustmentBatchAllocation[] = [];
 
         const sortedBatches = [...batches].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -25,14 +26,14 @@ export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmit
         for (const b of sortedBatches) {
             if (remaining <= 0) break;
             if (b.stock_qty > 0) {
-                const take = Math.min(b.stock_qty, remaining);
+                const take = roundQty(Math.min(b.stock_qty, remaining));
                 allocations.push({
                     batch_id: b.id,
                     qty: take,
                     buy_price: b.buy_price,
                     batch_number: b.batch_number || 'OPENING-STOCK'
                 });
-                remaining -= take;
+                remaining = subQty(remaining, take);
             }
         }
         return allocations;
@@ -73,18 +74,18 @@ export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmit
 
     useEffect(() => {
         const actual = Number(watchActualQty) || 0;
-        const change = actual - item.total_stock_qty;
+        const change = subQty(actual, item.total_stock_qty);
 
         setValue("qty_change", change);
         setValue("qty_after", actual);
 
         if (change < 0) {
             const neededSum = Math.abs(change);
-            const currentSum = getValues("batch_allocations").reduce((acc, a) => acc + Number(a.qty), 0);
+            const currentSum = sumQty(getValues("batch_allocations").map((a) => a.qty));
 
             // Failsafe: Only auto-allocate if the sums mismatch. 
             // This preserves the user's manual edits while they are typing.
-            if (currentSum !== neededSum) {
+            if (!sameQty(currentSum, neededSum)) {
                 const activeBatches = item.batches?.filter(b => b.stock_qty > 0) || [];
                 const allocations = autoAllocateFifo(activeBatches, neededSum);
                 setValue("batch_allocations", allocations, { shouldValidate: true });
@@ -107,7 +108,7 @@ export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmit
                 <div className="flex items-center gap-3 mt-2 text-sm">
                     <div className="flex flex-col">
                         <span className="text-slate-500 text-xs uppercase tracking-wider">System Stock</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">{item.total_stock_qty} {item.unit}</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{formatQty(item.total_stock_qty)} {item.unit}</span>
                     </div>
                     <ArrowRight className="h-4 w-4 text-slate-400" />
                     <div className="flex flex-col">
@@ -203,7 +204,7 @@ export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmit
                                                         if (newQty > 0) {
                                                             updatedAllocations.push({
                                                                 batch_id: batch.id,
-                                                                qty: Math.min(newQty, batch.stock_qty), 
+                                                                qty: roundQty(Math.min(newQty, batch.stock_qty)), 
                                                                 buy_price: batch.buy_price,
                                                                 batch_number: batch.batch_number
                                                             });
@@ -221,14 +222,14 @@ export default function StockAdjustmentForm({ item, onCancel, onSubmit, isSubmit
 
                         {/* Allocator Validation Warnings */}
                         {(() => {
-                            const totalAllocated = watchAllocations.reduce((sum, a) => sum + Number(a.qty), 0);
-                            const neededSum = Math.abs(watchQtyChange);
-                            const isMismatch = Math.abs(totalAllocated - neededSum) > 0.001;
+                            const totalAllocated = sumQty(watchAllocations.map((a) => a.qty));
+                            const neededSum = roundQty(Math.abs(watchQtyChange));
+                            const isMismatch = !sameQty(totalAllocated, neededSum);
 
                             if (isMismatch) {
                                 return (
                                     <div className="mt-2 p-1.5 rounded text-[10px] font-bold text-center bg-red-100 text-red-700 border border-red-300 dark:bg-red-500/20 dark:border-red-500/40">
-                                        ⚠️ Mismatch: You need to allocate {neededSum} {item.unit}. Currently allocated: {totalAllocated}
+                                        ⚠️ Mismatch: You need to allocate {formatQty(neededSum)} {item.unit}. Currently allocated: {formatQty(totalAllocated)}
                                     </div>
                                 );
                             }

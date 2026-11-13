@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Resolver, useFieldArray, useForm } from 'react-hook-form';
 import InputField from '../common/InputField';
 import { FileMinus, FileText, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { getLocalDateString } from '@/lib/utils';
+import { getLocalDateString, normalizeUnit } from '@/lib/utils';
 import { focusCell, formKeyDown, gridKeyDown, listKeyDown, resolveHighlight, useGridFocus } from '@/lib/helpers/keyboardNav';
 
 interface PurchaseOrderFormProps {
@@ -179,8 +179,6 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         rhfBlur(e);
     };
 
-    const VALID_UNITS = ["Pcs", "Set", "Kg", "Litre", "Ml", "Mtr", "Box", "Pack", "Dozen", "Gm"];
-
     const handleSelectItem = (invItem: InventoryItem, index: number) => {
         setValue(`po_line_items.${index}.item_id`, invItem.id);
         setValue(`po_line_items.${index}.item_name`, invItem.name, { shouldValidate: true });
@@ -200,11 +198,8 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
 
         setValue(`po_line_items.${index}.hsn_code`, invItem.hsn_code || "");
 
-        let rawUnit = invItem.unit || "Pcs";
-        if (rawUnit.toLowerCase() === 'ltr' || rawUnit.toLowerCase() === 'l') rawUnit = "Litre";
-        const formattedUnit = rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1).toLowerCase();
-
-        setValue(`po_line_items.${index}.unit`, VALID_UNITS.includes(formattedUnit) ? formattedUnit : "Pcs");
+        // Map the stored unit (Ltr, ft, feet ...) to one of the dropdown options; unknown -> Pcs
+        setValue(`po_line_items.${index}.unit`, normalizeUnit(invItem.unit));
 
         setValue(`po_line_items.${index}.gst_rate`, watchIsGstSupply ? (invItem.gst_rate || 0) : 0);
         setValue(`po_line_items.${index}.qty_ordered`, 1, { shouldValidate: true });
@@ -655,6 +650,7 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                                                         <option value="Litre">Litre</option>
                                                         <option value="Ml">Ml</option>
                                                         <option value="Mtr">Mtr</option>
+                                                        <option value="Foot">Foot</option>
                                                         <option value="Box">Box</option>
                                                         <option value="Pack">Pack</option>
                                                         <option value="Dozen">Dozen</option>
