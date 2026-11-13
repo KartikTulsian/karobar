@@ -289,16 +289,6 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
         // }, [JSON.stringify(watchItems), watchIsGstSupply, watchIsInterstate, watchDiscount, watchAmountPaid, setValue]);
     }, [totals.subtotal, totals.cgst_total, totals.sgst_total, totals.igst_total, totals.total_amount, totals.amount_due, setValue]);
 
-    useEffect(() => {
-        if (watchPaymentStatus === "paid" && totals.total_amount > 0) {
-            if (watchAmountPaid !== totals.total_amount) {
-                setValue("amount_paid", totals.total_amount, { shouldValidate: true, shouldDirty: true });
-            }
-        } else if (watchPaymentStatus === "unpaid" && watchAmountPaid !== 0) {
-            setValue("amount_paid", 0, { shouldValidate: true, shouldDirty: true });
-        }
-    }, [watchPaymentStatus, totals.total_amount, setValue, watchAmountPaid]);
-
     // const handleItemSearch = (query: string, index: number) => {
     //     if (!query.trim()) {
     //         setSearchResults(inventory.slice(0, 5));
@@ -811,7 +801,8 @@ export default function PurchaseOrderForm({ type, defaultValues, tenantId, isMod
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Payment Status *</label>
                             <select {...register("payment_status")} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                                 <option value="unpaid">Unpaid</option>
-                                <option value="paid">Paid</option>
+                                {/* "Paid" is set automatically by the system once the due amount reaches 0. Only shown (locked) for POs that are already paid. */}
+                                {watchPaymentStatus === "paid" && <option value="paid" disabled>Paid (automatic)</option>}
                                 <option value="partial">Partially Paid</option>
                                 <option value="cancelled">Cancelled</option>
                             </select>

@@ -407,12 +407,6 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         setValue("amount_due", totals.amount_due);
     }, [totals.subtotal, totals.cgst_total, totals.sgst_total, totals.igst_total, totals.grand_total, totals.amount_due, setValue]);
 
-    useEffect(() => {
-        if (watchStatus === "paid" && totals.grand_total > 0) {
-            setValue("amount_paid", totals.grand_total, { shouldValidate: true, shouldDirty: true });
-        }
-    }, [watchStatus, totals.grand_total, setValue]);
-
     const selectedCustomer = customers.find(c => c.id === watch("customer_id"));
     const currentDbWriteOff = selectedCustomer?.total_write_offs || 0;
     const hasWriteOffs = currentDbWriteOff > 0;
@@ -719,7 +713,8 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                             <select {...register("status")} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                                 {/* <option value="" disabled>Select Status...</option> */}
                                 <option value="issued">Issued (Unpaid)</option>
-                                <option value="paid">Paid</option>
+                                {/* "Paid" is set automatically by the system once the due amount reaches 0. Only shown (locked) for bills that are already paid. */}
+                                {watchStatus === "paid" && <option value="paid" disabled>Paid (automatic)</option>}
                                 <option value="partial">Partially Paid</option>
                                 <option value="draft">Draft</option>
                                 <option value="cancelled">Cancelled</option>
