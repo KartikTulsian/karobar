@@ -516,6 +516,15 @@ export async function createBill(tenantId: string, data: BillFormData) {
     }
 
 
+    // Payment status is decided here, never trusted from the form: fully covered -> paid, partly covered -> partial.
+    const createDue = Math.max(0, Number((Number(safeData.grand_total) - Number(safeData.amount_paid || 0)).toFixed(2)));
+    let createStatus: string = safeData.status === 'paid' ? 'issued' : safeData.status;
+    if (createStatus !== 'draft' && createStatus !== 'cancelled' && Number(safeData.grand_total) > 0) {
+        if (createDue <= 0) createStatus = 'paid';
+        else if (Number(safeData.amount_paid || 0) > 0) createStatus = 'partial';
+        else createStatus = 'issued';
+    }
+
     const { data: newBill, error: billError } = await supabase
         .from('bills')
         .insert({
@@ -527,7 +536,7 @@ export async function createBill(tenantId: string, data: BillFormData) {
             vehicle_no: safeData.vehicle_no || null,
             reference_name: safeData.reference_name || null,
             terms_conditions: safeData.terms_conditions || null,
-            status: safeData.status,
+            status: createStatus,
             is_gst_bill: safeData.is_gst_bill,
             is_interstate: safeData.is_interstate,
             subtotal: safeData.subtotal,

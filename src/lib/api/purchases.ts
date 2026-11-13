@@ -598,6 +598,15 @@ export async function createPurchaseOrder(tenantId: string, data: PurchaseOrderF
 
     console.log(`[DEBUG] Final PO Number: ${finalPoNumber}`);
 
+    // Payment status is decided here, never trusted from the form: fully covered -> paid, partly covered -> partial.
+    const createPoDue = Math.max(0, Number((Number(safeData.total_amount) - Number(safeData.amount_paid || 0)).toFixed(2)));
+    let createPaymentStatus: string = safeData.payment_status === 'paid' ? 'unpaid' : safeData.payment_status;
+    if (createPaymentStatus !== 'cancelled' && Number(safeData.total_amount) > 0) {
+        if (createPoDue <= 0) createPaymentStatus = 'paid';
+        else if (Number(safeData.amount_paid || 0) > 0) createPaymentStatus = 'partial';
+        else createPaymentStatus = 'unpaid';
+    }
+
     // Step A: Insert Parent PO
     const { data: newPO, error: poError } = await supabase
         .from('purchase_orders')
@@ -616,7 +625,7 @@ export async function createPurchaseOrder(tenantId: string, data: PurchaseOrderF
             reference_name: safeData.reference_name || null,
             terms_conditions: safeData.terms_conditions || null,
 
-            payment_status: safeData.payment_status,
+            payment_status: createPaymentStatus,
             payment_method: safeData.payment_method,
             is_gst_supply: safeData.is_gst_supply,
             is_interstate: safeData.is_interstate,
