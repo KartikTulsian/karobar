@@ -62,7 +62,7 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
         const baseValues = {
             bill_date: getLocalDateString(new Date().toISOString()),
             customer_type: "" as unknown as "registered",
-            status: "" as unknown as "issued",
+            status: "issued",
             payment_method: "credit",
             is_gst_bill: true,
             is_interstate: false,
@@ -711,7 +711,6 @@ export default function BillForm({ type, defaultValues, tenantId, isModal = fals
                         <div className="flex flex-col gap-1">
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Bill Status *</label>
                             <select {...register("status")} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                                {/* <option value="" disabled>Select Status...</option> */}
                                 <option value="issued">Issued (Unpaid)</option>
                                 {/* "Paid" is set automatically by the system once the due amount reaches 0. Only shown (locked) for bills that are already paid. */}
                                 {watchStatus === "paid" && <option value="paid" disabled>Paid (automatic)</option>}
